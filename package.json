@@ -1,6 +1,6 @@
 {
   "name": "knex-db2",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Knex dialect for DB2",
   "main": "src/index.js",
   "engines": {
