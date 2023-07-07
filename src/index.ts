@@ -1,5 +1,3 @@
-import Client from "knex/lib/client";
-import Logger from "knex/lib/logger";
 import * as process from "process";
 import { Connection } from "odbc";
 import { knex } from "knex";
