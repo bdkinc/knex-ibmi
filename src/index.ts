@@ -28,7 +28,7 @@ class DB2Client extends knex.Client {
   printDebug(message: string) {
     if (process.env.DEBUG === "true") {
       // @ts-ignore
-      this.logger.log(message);
+      this.logger.debug(message);
     }
   }
 
@@ -36,9 +36,7 @@ class DB2Client extends knex.Client {
   // connection needs to be added to the pool.
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
-    // @ts-ignore
     const connectionConfig = this.config.connection;
-    console.log({ connection: this._getConnectionString(connectionConfig) });
     return await this.driver.connect(
       this._getConnectionString(connectionConfig)
     );
