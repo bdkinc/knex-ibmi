@@ -2,30 +2,23 @@ import Client from "knex/lib/client";
 import Logger from "knex/lib/logger";
 import * as process from "process";
 import { Connection } from "odbc";
-import { Knex } from "knex";
-import odbc from "odbc";
+import { knex } from "knex";
 
-class DB2Client extends Client<Knex.Client> {
-  private config: any;
-  private logger: any;
-  private driver: any;
-
+class DB2Client extends knex.Client {
   constructor(config: any = {}) {
     super(config);
-    this.config = config;
-    this.logger = new Logger(config);
+    this.driverName = "odbc";
 
-    if (config.connection) {
-      this.driver = odbc;
+    if (this.driverName && config.connection) {
+      this.initializeDriver();
       if (!config.pool || (config.pool && config.pool.max !== 0)) {
-        // @ts-ignore
         this.initializePool(config);
       }
     }
   }
 
   _driver() {
-    return odbc;
+    return require("odbc");
   }
 
   wrapIdentifierImpl(value: any) {
@@ -36,6 +29,7 @@ class DB2Client extends Client<Knex.Client> {
 
   printDebug(message: string) {
     if (process.env.DEBUG === "true") {
+      // @ts-ignore
       this.logger.log(message);
     }
   }
@@ -47,7 +41,9 @@ class DB2Client extends Client<Knex.Client> {
     // @ts-ignore
     const connectionConfig = this.config.connection;
     console.log({ connection: this._getConnectionString(connectionConfig) });
-    return await odbc.connect(this._getConnectionString(connectionConfig));
+    return await this.driver.connect(
+      this._getConnectionString(connectionConfig)
+    );
   }
 
   // Used to explicitly close a connection, called internally by the pool manager
