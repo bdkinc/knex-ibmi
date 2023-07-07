@@ -1,39 +1,33 @@
-import Transaction from "./transaction";
 // @ts-ignore
 import Client from "knex/lib/client";
+// @ts-ignore
+import Logger from "knex/lib/logger";
 import * as process from "process";
 import { Connection } from "odbc";
 import { Knex } from "knex";
+import odbc from "odbc";
 
 class DB2Client extends Client<Knex.Client> {
-  private dialect: string;
-  private readonly driverName: string;
+  private config: any;
+  private logger: any;
+  private driver: any;
 
   constructor(config: any = {}) {
     super(config);
+    this.config = config;
+    this.logger = new Logger(config);
 
-    this.dialect = "db2";
-    this.driverName = "odbc";
-
-    Client.call(this, config);
-
-    const { driver } = config.connection || {};
-
-    if (!driver) {
-      // @ts-ignore
-      this.logger.warn(
-        "Warn: config.connection.driver is needed for connecting to the database"
-      );
+    if (config.connection) {
+      this.driver = odbc;
+      if (!config.pool || (config.pool && config.pool.max !== 0)) {
+        // @ts-ignore
+        this.initializePool(config);
+      }
     }
   }
 
-  async _driver() {
-    return await import(this.driverName);
-  }
-
-  transaction() {
-    // @ts-ignore
-    return new Transaction(this, ...arguments);
+  _driver() {
+    return odbc;
   }
 
   wrapIdentifierImpl(value: any) {
@@ -55,32 +49,14 @@ class DB2Client extends Client<Knex.Client> {
     this.printDebug("acquiring raw connection");
     // @ts-ignore
     const connectionConfig = this.config.connection;
-
-    try {
-      // @ts-ignore
-      return await this.driver.connect(
-        this._getConnectionString(connectionConfig)
-      );
-    } catch (err) {
-      // @ts-ignore
-      throw new Error(err);
-    }
+    console.log({ connection: this._getConnectionString(connectionConfig) });
+    return await odbc.connect(this._getConnectionString(connectionConfig));
   }
 
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection: Connection) {
     return await connection.close();
-  }
-
-  async validateConnection(connection: Connection) {
-    // @ts-ignore
-    return await connection.tables();
-  }
-
-  _stream(connection: Connection, obj: any, stream: any, options: any) {
-    this._stream(connection, obj, stream, options);
-    throw new Error("Not yet implemented");
   }
 
   _getConnectionString(connectionConfig: any = {}) {
@@ -90,7 +66,7 @@ class DB2Client extends Client<Knex.Client> {
       connectionStringParams
     ).reduce((result, key) => {
       const value = connectionStringParams[key];
-      return `${result}${key}=${value}`;
+      return `${result}${key}=${value};`;
     }, "");
 
     return `${

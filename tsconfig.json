@@ -3,7 +3,7 @@
     "baseUrl": "./src",
     "rootDir": "./src",
     "target": "ESNext",
-    "module": "ESNext",
+    "module": "commonjs",
     "moduleResolution": "Node",
     "jsx": "react-jsx",
     "types": ["vite/client", "node", "react"],

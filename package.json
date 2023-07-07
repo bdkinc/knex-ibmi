@@ -14,7 +14,8 @@
     "build": "tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts",
     "watch": "tsc && vite build --watch",
     "lint:scripts": "eslint . --ext .ts",
-    "format:scripts": "prettier . --write"
+    "format:scripts": "prettier . --write",
+    "testConnection": "DEBUG=knex:* ts-node testConnection.ts"
   },
   "keywords": [
     "knex",
