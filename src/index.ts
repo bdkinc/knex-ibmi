@@ -1,6 +1,4 @@
-// @ts-ignore
 import Client from "knex/lib/client";
-// @ts-ignore
 import Logger from "knex/lib/logger";
 import * as process from "process";
 import { Connection } from "odbc";
@@ -38,7 +36,6 @@ class DB2Client extends Client<Knex.Client> {
 
   printDebug(message: string) {
     if (process.env.DEBUG === "true") {
-      // @ts-ignore
       this.logger.log(message);
     }
   }
