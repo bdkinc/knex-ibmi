@@ -2,7 +2,6 @@ import knex from "knex";
 import DB2Dialect from "./src/index";
 
 const db = knex({
-  // @ts-ignore
   client: DB2Dialect,
   connection: {
     database: "COMPOSER",
@@ -15,7 +14,7 @@ const db = knex({
     connectionStringParams: {
       CMT: 0,
       Naming: 1,
-      DBQ: ",USAEDIDTA,USFLICLIB",
+      DBQ: ",BRIAN",
     },
     pool: {
       max: 100,
@@ -24,9 +23,28 @@ const db = knex({
   },
 });
 
-async function testConnection() {
-  const response = await db.select().from("USAEDIDTA.USAIMPH");
+async function getData() {
+  const response = await db.select().from("BRIAN.DATA");
   console.log(JSON.stringify(response, null, 4));
 }
 
-testConnection();
+async function insertData() {
+  const response = await db("BRIAN.DATA").insert({ text: "Soup" });
+  console.log(JSON.stringify(response, null, 2));
+}
+
+async function updateData() {
+  const response = await db("BRIAN.DATA")
+    .where({ id: 1 })
+    .update({ text: "Sup" });
+}
+
+async function testConnection() {
+  await insertData();
+  await getData();
+  await updateData();
+  await getData();
+  process.exit();
+}
+
+testConnection().then(() => console.log("done"));

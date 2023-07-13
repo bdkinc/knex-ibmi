@@ -21,7 +21,10 @@
     "knex",
     "dialect",
     "querybuilder",
-    "db2"
+    "db2",
+    "ibm",
+    "ibmi",
+    "odbc"
   ],
   "author": {
     "name": "Henry Williams",
@@ -44,11 +47,10 @@
     "eslint": "^8.44.0",
     "eslint-config-prettier": "^8.8.0",
     "eslint-plugin-prettier": "^4.2.1",
-    "knex": "^2.4.2",
-    "odbc": "^2.4.8",
     "prettier": "^3.0.0",
     "ts-node": "^10.9.1",
     "tslib": "^2.6.0",
+    "tsup": "^7.1.0",
     "typescript": "^5.1.6",
     "vite": "^4.4.0"
   },
@@ -63,5 +65,9 @@
       "pre-commit": "npm run lint",
       "pre-push": "npm test"
     }
+  },
+  "dependencies": {
+    "knex": "^2",
+    "odbc": "^2.4.8"
   }
 }
