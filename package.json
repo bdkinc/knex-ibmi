@@ -10,9 +10,7 @@
   },
   "engineStrict": true,
   "scripts": {
-    "start": "vite --host --open",
-    "build": "tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts",
-    "watch": "tsc && vite build --watch",
+    "build": "tsup-node src/index.ts --format esm,cjs",
     "lint:scripts": "eslint . --ext .ts",
     "format:scripts": "prettier . --write",
     "testConnection": "DEBUG=knex:* ts-node testConnection.ts"
@@ -37,13 +35,9 @@
   "license": "MIT",
   "devDependencies": {
     "@types/knex": "^0.16.1",
-    "@types/react": "^18.2.14",
-    "@types/react-dom": "^18.2.6",
     "@typescript-eslint/eslint-plugin": "^5.61.0",
     "@typescript-eslint/parser": "^5.61.0",
-    "@vitejs/plugin-react": "^4.0.2",
     "debug": "^4.3.4",
-    "dts-bundle-generator": "^8.0.1",
     "eslint": "^8.44.0",
     "eslint-config-prettier": "^8.8.0",
     "eslint-plugin-prettier": "^4.2.1",
@@ -51,8 +45,7 @@
     "ts-node": "^10.9.1",
     "tslib": "^2.6.0",
     "tsup": "^7.1.0",
-    "typescript": "^5.1.6",
-    "vite": "^4.4.0"
+    "typescript": "^5.1.6"
   },
   "files": [
     "dist",
@@ -60,12 +53,6 @@
     "README.md",
     "LICENSE"
   ],
-  "husky": {
-    "hooks": {
-      "pre-commit": "npm run lint",
-      "pre-push": "npm test"
-    }
-  },
   "dependencies": {
     "knex": "^2",
     "odbc": "^2.4.8"
