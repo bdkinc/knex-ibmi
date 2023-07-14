@@ -34,8 +34,8 @@ __export(src_exports, {
 });
 module.exports = __toCommonJS(src_exports);
 var process = __toESM(require("process"));
-var import_knex = require("knex");
-var DB2Client = class extends import_knex.knex.Client {
+var import_knex = __toESM(require("knex"));
+var DB2Client = class extends import_knex.default.Client {
   constructor(config = {}) {
     super(config);
     this.driverName = "odbc";

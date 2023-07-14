@@ -8,7 +8,7 @@ var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require
 
 // src/index.ts
 import * as process from "process";
-import { knex } from "knex";
+import knex from "knex";
 var DB2Client = class extends knex.Client {
   constructor(config = {}) {
     super(config);
