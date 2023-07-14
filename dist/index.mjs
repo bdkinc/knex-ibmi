@@ -1,14 +1,7 @@
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined")
-    return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
-
 // src/index.ts
 import * as process from "process";
 import knex from "knex";
+import odbc from "odbc";
 var DB2Client = class extends knex.Client {
   constructor(config = {}) {
     super(config);
@@ -21,7 +14,7 @@ var DB2Client = class extends knex.Client {
     }
   }
   _driver() {
-    return __require("odbc");
+    return odbc;
   }
   wrapIdentifierImpl(value) {
     return value;

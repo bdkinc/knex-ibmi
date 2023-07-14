@@ -1,6 +1,7 @@
 import * as process from "process";
 import { Connection } from "odbc";
 import knex from "knex";
+import odbc from "odbc";
 
 class DB2Client extends knex.Client {
   constructor(config: any = {}) {
@@ -16,7 +17,7 @@ class DB2Client extends knex.Client {
   }
 
   _driver() {
-    return require("odbc");
+    return odbc;
   }
 
   wrapIdentifierImpl(value: any) {
