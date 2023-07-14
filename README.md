@@ -25,7 +25,7 @@ Currently this dialect has limited functionality compared to the Knex built-in d
 
 ## Installing
 
-`npm install https://github.com/bskimball/knex-db2`
+`npm install https://github.com/bdkinc/knex-ibmi`
 
 Requires Node v14 or higher.
 
