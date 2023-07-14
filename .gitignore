@@ -4,3 +4,5 @@ docs
 srcOld
 .idea
 old
+testConnection.ts
+package-lock.json
