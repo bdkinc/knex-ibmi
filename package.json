@@ -1,5 +1,5 @@
 {
-  "name": "knex-ibmi",
+  "name": "@bdkinc/knex-ibmi",
   "version": "0.0.1",
   "description": "Knex dialect for IBMi",
   "main": "dist/index.js",
@@ -36,6 +36,7 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@faker-js/faker": "^8.0.2",
     "@types/knex": "^0.16.1",
     "@typescript-eslint/eslint-plugin": "^5.61.0",
     "@typescript-eslint/parser": "^5.61.0",
