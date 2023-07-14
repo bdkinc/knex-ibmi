@@ -4,72 +4,75 @@
 [![dependencies Status](https://david-dm.org/henryjw/knex-db2/status.svg)](https://david-dm.org/henryjw/knex-db2)
 [![devDependencies Status](https://david-dm.org/henryjw/knex-db2/dev-status.svg)](https://david-dm.org/henryjw/knex-db2?type=dev)
 
-
 **Disclaimer: this library is in early stages of development. Use at your own risk. Please submit an issue for any bugs encounter or any questions you have.**
 
 ## Description
-This is an external dialect for [knex](https://github.com/tgriesser/knex).
+
+This is an external dialect for [knex](https://github.com/tgriesser/knex). This library is only tested on IBMi. Here are the IBM OSS Docs https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html
 
 ## Limitations
+
 Currently this dialect has limited functionality compared to the Knex built-in dialects. Below are some of the limitations:
+
 - No transaction support
 - No streaming support
 - Possibly other missing functionality
 
 ## Supported functionality
+
 - Query building
 - Query execution (see [Limitations](#Limitations))
 
-
 ## Installing
+
 `npm install knex-db2`
 
 Requires Node v6 or higher.
 
 ## Dependencies
+
 `npm install odbc` see [ODBC dependencies](#odbc-dependencies) if you run into any issues
 
 `npm install knex`
 
 ## Usage
+
 ```javascript
-const Knex = require('knex')
-const Db2Dialect = require('knex-db2')
+const Knex = require("knex");
+const { Db2Dialect } = require("knex-db2");
 
 const knex = Knex({
-	client: Db2Dialect,
-	connection: {
-		host: 'localhost',
-		database: 'knextest',
-		port: 50000,
-		user: 'db2inst1',
-		password: 'db2inst1-pwd',
-		driver: '{IBM Cli Driver}',
-		connectionStringParams: {
-			ALLOWPROCCALLS: 1,
-			CMT: 0
-		}
-	},
-	pool: {
-		min: 2,
-		max: 10
-	}
-})
+  client: Db2Dialect,
+  connection: {
+    host: "localhost",
+    database: "knextest",
+    port: 50000,
+    user: "db2inst1",
+    password: "db2inst1-pwd",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: {
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+    },
+  },
+  pool: {
+    min: 2,
+    max: 10,
+  },
+});
 
-const query = knex
-	.select('*')
-	.from('table1')
-	.where('x', 'y')
-
+const query = async () => {
+  return await knex.select("*").from("table1").where("x", "y");
+};
 
 query
-	.then(result => console.log(result))
-	.catch(err => console.error(err))
-	.finally(() => process.exit())
+  .then((result) => console.log(result))
+  .catch((err) => console.error(err))
+  .finally(() => process.exit());
 ```
 
-
 ## ODBC dependencies
+
 - make: `sudo apt install make`
 - g++: `sudo apt install g++`
 - unix odbc: `sudo apt-get install unixodbc unixodbc-dev`
@@ -78,6 +81,7 @@ query
 
 If you don't know the name of your installed driver, then look in look in `odbcinst.ini`. You can find the full path of the file by running `odbcinst -j`.
 There you should see an entry like the one below:
+
 ```
 [IBM i Access ODBC Driver 64-bit]       <= driver name enclosed in square brackets
 Description=IBM i Access for Linux 64-bit ODBC Driver
@@ -87,17 +91,22 @@ Threading=0
 DontDLClose=1
 UsageCount=1
 ```
+
 If that still doesn't work, then unixodbc is probably looking for the config files in the wrong directory. A common case is that the configs are in `/etc` but your system expects them to be somewhere else. In such case, override the path unixodbc looks in via the `ODBCSYSINI` and `ODBCINI` environment variables.
 E.g., `ODBCINI=/etc ODBCSYSINI=/etc`.
 
 ## Installing default driver
+
 ### Download driver
+
 https://github.com/ibmdb/node-ibm_db#-download-clidriver-based-on-your-platform--architecture-from-the-below-ibm-hosted-url
 
 ### Install driver
+
 - Extract downloaded file. This will create a `clidriver` folder with the driver contents
 - Copy this folder to wherever your system keeps drivers. If you're not sure where to put it, just copy it to `/opt/ibm`.
 - Add the configuration your `/etc/odbcinst.ini` file. Below is what the contents of the file should look like if your odbc path is `/opt`
+
 ```
 [IBM Cli Driver]
 Description=IBM CLI Driver for Linux 64-bit
