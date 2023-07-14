@@ -27,7 +27,7 @@ Currently this dialect has limited functionality compared to the Knex built-in d
 
 `npm install https://github.com/bskimball/knex-db2`
 
-Requires Node v6 or higher.
+Requires Node v14 or higher.
 
 ## Dependencies
 
@@ -36,6 +36,7 @@ Requires Node v6 or higher.
 `npm install knex`
 
 ## Usage
+This library is written in typescript and compiled to both commonjs and esm. 
 
 ```javascript
 const Knex = require("knex");
@@ -61,9 +62,41 @@ const knex = Knex({
   },
 });
 
-const query = async () => {
-  return await knex.select("*").from("table1").where("x", "y");
-};
+const query = knex.select("*").from("table1").where("x", "y");
+
+query
+  .then((result) => console.log(result))
+  .catch((err) => console.error(err))
+  .finally(() => process.exit());
+```
+
+or as ESM
+
+```javascript
+import knex from "knex";
+import { Db2Dialect } from "knex-db2";
+
+const knex = Knex({
+  client: Db2Dialect,
+  connection: {
+    host: "localhost",
+    database: "knextest",
+    port: 50000,
+    user: "db2inst1",
+    password: "db2inst1-pwd",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: {
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+    },
+  },
+  pool: {
+    min: 2,
+    max: 10,
+  },
+});
+
+const query = knex.select("*").from("table1").where("x", "y");
 
 query
   .then((result) => console.log(result))
