@@ -2,9 +2,10 @@ import * as process from "process";
 import { Connection } from "odbc";
 import knex from "knex";
 import * as odbc from "odbc";
+import * as console from "console";
 
 class DB2Client extends knex.Client {
-  constructor(config: any = {}) {
+  constructor(config) {
     super(config);
     this.driverName = "odbc";
 
@@ -39,7 +40,7 @@ class DB2Client extends knex.Client {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
     return await this.driver.connect(
-      this._getConnectionString(connectionConfig)
+      this._getConnectionString(connectionConfig),
     );
   }
 
@@ -49,11 +50,11 @@ class DB2Client extends knex.Client {
     return await connection.close();
   }
 
-  _getConnectionString(connectionConfig: any = {}) {
+  _getConnectionString(connectionConfig) {
     const connectionStringParams =
       connectionConfig.connectionStringParams || {};
     const connectionStringExtension = Object.keys(
-      connectionStringParams
+      connectionStringParams,
     ).reduce((result, key) => {
       const value = connectionStringParams[key];
       return `${result}${key}=${value};`;
@@ -69,11 +70,11 @@ class DB2Client extends knex.Client {
   // Runs the query on the specified connection, providing the bindings
   // and any other necessary prep work.
   async _query(connection: Connection, obj: any) {
+    console.log({ obj });
     // TODO: verify correctness
     if (!obj || typeof obj == "string") obj = { sql: obj };
-    const method = (obj.method !== "raw"
-      ? obj.method
-      : obj.sql.split(" ")[0]
+    const method = (
+      obj.method !== "raw" ? obj.method : obj.sql.split(" ")[0]
     ).toLowerCase();
     obj.sqlMethod = method;
 
@@ -84,7 +85,6 @@ class DB2Client extends knex.Client {
       if (rows) {
         obj.response = { rows, rowCount: rows.length };
       }
-
       return obj;
     }
 
