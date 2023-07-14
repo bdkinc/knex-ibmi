@@ -1,7 +1,7 @@
 import * as process from "process";
 import { Connection } from "odbc";
 import knex from "knex";
-import odbc from "odbc";
+import * as odbc from "odbc";
 
 class DB2Client extends knex.Client {
   constructor(config: any = {}) {
@@ -125,4 +125,5 @@ class DB2Client extends knex.Client {
   }
 }
 
+export const DB2Dialect = DB2Client;
 export default DB2Client;

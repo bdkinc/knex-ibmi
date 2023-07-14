@@ -30,12 +30,13 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var src_exports = {};
 __export(src_exports, {
+  DB2Dialect: () => DB2Dialect,
   default: () => src_default
 });
 module.exports = __toCommonJS(src_exports);
 var process = __toESM(require("process"));
 var import_knex = __toESM(require("knex"));
-var import_odbc = __toESM(require("odbc"));
+var odbc = __toESM(require("odbc"));
 var DB2Client = class extends import_knex.default.Client {
   constructor(config = {}) {
     super(config);
@@ -48,7 +49,7 @@ var DB2Client = class extends import_knex.default.Client {
     }
   }
   _driver() {
-    return import_odbc.default;
+    return odbc;
   }
   wrapIdentifierImpl(value) {
     return value;
@@ -129,4 +130,9 @@ var DB2Client = class extends import_knex.default.Client {
     }
   }
 };
+var DB2Dialect = DB2Client;
 var src_default = DB2Client;
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  DB2Dialect
+});
