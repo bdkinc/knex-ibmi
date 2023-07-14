@@ -1,7 +1,7 @@
 {
-  "name": "knex-db2",
-  "version": "1.0.5",
-  "description": "Knex dialect for DB2",
+  "name": "knex-ibmi",
+  "version": "0.0.1",
+  "description": "Knex dialect for IBMi",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "exports": {
@@ -28,12 +28,12 @@
     "odbc"
   ],
   "author": {
-    "name": "Henry Williams",
-    "web": "https://github.com/henryjw"
+    "name": "BDKinc",
+    "web": "https://github.com/bdkinc"
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/henryjw/knex-db2.git"
+    "url": "git://github.com/bdkinc/knex-ibmi.git"
   },
   "license": "MIT",
   "devDependencies": {
@@ -51,6 +51,7 @@
     "typescript": "^5.1.6"
   },
   "files": [
+    "src",
     "dist",
     "CHANGELOG.md",
     "README.md",
