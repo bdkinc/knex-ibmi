@@ -9,7 +9,7 @@
   },
   "engineStrict": true,
   "scripts": {
-    "build": "tsup-node src/index.ts --format esm,cjs --target es2020",
+    "build": "tsup src/index.ts --format esm,cjs",
     "lint:scripts": "eslint . --ext .ts",
     "format:scripts": "prettier . --write",
     "testConnection": "DEBUG=knex:* ts-node testConnection.ts"
