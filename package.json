@@ -15,8 +15,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs",
     "lint:scripts": "eslint . --ext .ts",
-    "format:scripts": "prettier . --write",
-    "testConnection": "DEBUG=knex:* ts-node testConnection.ts"
+    "format:scripts": "prettier . --write"
   },
   "keywords": [
     "knex",
