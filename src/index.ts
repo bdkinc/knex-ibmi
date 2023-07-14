@@ -70,6 +70,7 @@ class DB2Client extends knex.Client {
   // Runs the query on the specified connection, providing the bindings
   // and any other necessary prep work.
   async _query(connection: Connection, obj: any) {
+    console.log({ obj });
     // TODO: verify correctness
     if (!obj || typeof obj == "string") obj = { sql: obj };
     const method = (
