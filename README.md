@@ -40,7 +40,7 @@ This library is written in typescript and compiled to both commonjs and esm.
 
 ```javascript
 const Knex = require("knex");
-const { Db2Dialect } = require("knex-db2");
+const { Db2Dialect } = require("knex-ibmi");
 
 const knex = Knex({
   client: Db2Dialect,
@@ -74,7 +74,7 @@ or as ESM
 
 ```javascript
 import knex from "knex";
-import { Db2Dialect } from "knex-db2";
+import { Db2Dialect } from "knex-ibmi";
 
 const knex = Knex({
   client: Db2Dialect,
