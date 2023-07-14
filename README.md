@@ -25,7 +25,7 @@ Currently this dialect has limited functionality compared to the Knex built-in d
 
 ## Installing
 
-`npm install knex-db2`
+`npm install https://github.com/bskimball/knex-db2`
 
 Requires Node v6 or higher.
 
