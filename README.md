@@ -1,23 +1,24 @@
 [![npm version](http://img.shields.io/npm/v/knex-db2.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
 
-**Disclaimer: this library is in early stages of development. Use at your own risk. Please submit an issue for any bugs encounter or any questions you have.**
+**Disclaimer: this library is in early stages of development. Please submit an issue for any bugs encounter or any questions you have.**
 
 ## Description
 
 This is an external dialect for [knex](https://github.com/tgriesser/knex). This library uses the ODBC driver and is only tested on IBMi. Here are the IBM OSS Docs https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html
 
-## Limitations
-
-Currently this dialect has limited functionality compared to the Knex built-in dialects. Below are some of the limitations:
-
-- No transaction support
-- No streaming support
-- Possibly other missing functionality
-
 ## Supported functionality
 
 - Query building
 - Query execution (see [Limitations](#Limitations))
+- Transactions
+
+## Limitations
+
+Currently, this dialect has limited functionality compared to the Knex built-in dialects. Below are some of the limitations:
+
+- No streaming support
+- Possibly other missing functionality
+- Uses a pool for all connections
 
 ## Installing
 
@@ -105,11 +106,21 @@ try {
 
 ## Configuring your driver
 
-If you don't know the name of your installed driver, then look in look in `odbcinst.ini`. You can find the full path of the file by running `odbcinst -j`.
+If you don't know the name of your installed driver, then look in `odbcinst.ini`. You can find the full path of the file by running `odbcinst -j`.
 There you should see an entry like the one below:
 
 ```
-[IBM i Access ODBC Driver 64-bit]       <= driver name enclosed in square brackets
+[IBM i Access ODBC Driver] <== driver name in square brackets
+Description=IBM i Access for Linux ODBC Driver
+Driver=/opt/ibm/iaccess/lib/libcwbodbc.so
+Setup=/opt/ibm/iaccess/lib/libcwbodbcs.so
+Driver64=/opt/ibm/iaccess/lib64/libcwbodbc.so
+Setup64=/opt/ibm/iaccess/lib64/libcwbodbcs.so
+Threading=0
+DontDLClose=1
+UsageCount=1
+
+[IBM i Access ODBC Driver 64-bit]
 Description=IBM i Access for Linux 64-bit ODBC Driver
 Driver=/opt/ibm/iaccess/lib64/libcwbodbc.so
 Setup=/opt/ibm/iaccess/lib64/libcwbodbcs.so

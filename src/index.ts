@@ -3,17 +3,45 @@ import { Connection } from "odbc";
 import knex from "knex";
 import * as odbc from "odbc";
 import * as console from "console";
+import SchemaCompiler from "./schema/ibmi-compiler";
+import TableCompiler from "./schema/ibmi-tablecompiler";
+import ColumnCompiler from "./schema/ibmi-columncompiler";
+import Transaction from "./execution/ibmi-transaction";
+import QueryCompiler from "./query/ibmi-querycompiler";
 
 class DB2Client extends knex.Client {
   constructor(config) {
     super(config);
+
     this.driverName = "odbc";
+
+    if (this.dialect && !this.config.client) {
+      // @ts-ignore
+      this.logger.warn(
+        `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the future. Please use configuration option 'client' instead.`,
+      );
+    }
+
+    const dbClient = this.config.client || this.dialect;
+    if (!dbClient) {
+      throw new Error(
+        `knex: Required configuration option 'client' is missing.`,
+      );
+    }
+
+    if (config.version) {
+      this.version = config.version;
+    }
 
     if (this.driverName && config.connection) {
       this.initializeDriver();
       if (!config.pool || (config.pool && config.pool.max !== 0)) {
         this.initializePool(config);
       }
+    }
+    this.valueForUndefined = this.raw("DEFAULT");
+    if (config.useNullAsDefault) {
+      this.valueForUndefined = null;
     }
   }
 
@@ -24,6 +52,9 @@ class DB2Client extends knex.Client {
   wrapIdentifierImpl(value: any) {
     // override default wrapper ("). we don't want to use it since
     // it makes identifiers case-sensitive in DB2
+    if (value.includes("knex_migrations")) {
+      return value.toUpperCase();
+    }
     return value;
   }
 
@@ -39,14 +70,14 @@ class DB2Client extends knex.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    return await this.driver.connect(
-      this._getConnectionString(connectionConfig),
-    );
+    console.log(this._getConnectionString(connectionConfig));
+    return await this.driver.pool(this._getConnectionString(connectionConfig));
   }
 
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection: Connection) {
+    console.log("destroy connection");
     return await connection.close();
   }
 
@@ -69,31 +100,68 @@ class DB2Client extends knex.Client {
 
   // Runs the query on the specified connection, providing the bindings
   // and any other necessary prep work.
-  async _query(connection: Connection, obj: any) {
-    console.log({ obj });
+  async _query(pool: any, obj: any) {
+    // @ts-ignore
     // TODO: verify correctness
     if (!obj || typeof obj == "string") obj = { sql: obj };
     const method = (
-      obj.method !== "raw" ? obj.method : obj.sql.split(" ")[0]
+      obj.hasOwnProperty("method") && obj.method !== "raw"
+        ? obj.method
+        : obj.sql.split(" ")[0]
     ).toLowerCase();
     obj.sqlMethod = method;
 
     // Different functions are used since query() doesn't return # of rows affected,
     // which is needed for queries that modify the database
+
     if (method === "select" || method === "first" || method === "pluck") {
-      const rows: any = await connection.query(obj.sql, obj.bindings);
+      const rows: any = await pool.query(obj.sql, obj.bindings);
       if (rows) {
         obj.response = { rows, rowCount: rows.length };
       }
-      return obj;
+    } else {
+      try {
+        const connection = await pool.connect();
+        const statement = await connection.createStatement();
+        await statement.prepare(obj.sql);
+        if (obj.bindings) {
+          await statement.bind(obj.bindings);
+        }
+        const result = await statement.execute();
+        obj.response = { rows: [result.count], rowCount: result.count };
+      } catch (err: any) {
+        console.error(err);
+        throw new Error(err);
+      }
     }
-
-    const statement = await connection.createStatement();
-    await statement.prepare(obj.sql);
-    await statement.bind(obj.bindings);
-    obj.response = await statement.execute();
+    console.log({ obj });
 
     return obj;
+  }
+
+  transaction() {
+    // @ts-ignore
+    return new Transaction(this, ...arguments);
+  }
+
+  schemaCompiler() {
+    // @ts-ignore
+    return new SchemaCompiler(this, ...arguments);
+  }
+
+  tableCompiler() {
+    // @ts-ignore
+    return new TableCompiler(this, ...arguments);
+  }
+
+  columnCompiler() {
+    // @ts-ignore
+    return new ColumnCompiler(this, ...arguments);
+  }
+
+  queryCompiler() {
+    // @ts-ignore
+    return new QueryCompiler(this, ...arguments);
   }
 
   processResponse(obj: any, runner: any) {
