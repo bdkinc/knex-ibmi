@@ -1,6 +1,6 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Knex dialect for IBMi",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -58,7 +58,9 @@
     "LICENSE"
   ],
   "dependencies": {
+    "date-fns": "^2.30.0",
     "knex": "^2",
+    "lodash": "^4.17.21",
     "odbc": "^2.4.8"
   }
 }
