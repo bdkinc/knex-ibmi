@@ -106,7 +106,7 @@ try {
 
 ## Configuring your driver
 
-If you don't know the name of your installed driver, then look in look in `odbcinst.ini`. You can find the full path of the file by running `odbcinst -j`.
+If you don't know the name of your installed driver, then look in `odbcinst.ini`. You can find the full path of the file by running `odbcinst -j`.
 There you should see an entry like the one below:
 
 ```
