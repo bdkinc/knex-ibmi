@@ -2,7 +2,7 @@
 import * as process from "process";
 import knex from "knex";
 import * as odbc from "odbc";
-import * as console5 from "console";
+import * as console3 from "console";
 
 // src/schema/ibmi-compiler.ts
 import SchemaCompiler from "knex/lib/schema/compiler";
@@ -13,8 +13,11 @@ var IBMiSchemaCompiler = class extends SchemaCompiler {
   }
   hasTable(tableName) {
     const formattedTable = this.client.parameter(
+      // @ts-ignore
       prefixedTableName(this.schema, tableName),
+      // @ts-ignore
       this.builder,
+      // @ts-ignore
       this.bindingsHolder
     );
     const bindings = [tableName.toUpperCase()];
@@ -49,49 +52,16 @@ var ibmi_compiler_default = IBMiSchemaCompiler;
 // src/schema/ibmi-tablecompiler.ts
 import TableCompiler from "knex/lib/schema/tablecompiler";
 var IBMiTableCompiler = class extends TableCompiler {
-  constructor(client, tableBuilder) {
-    super(client, tableBuilder);
-  }
-  unique(columns, indexName) {
-    let deferrable;
-    let useConstraint = false;
-    let predicate;
-    if (typeof indexName === "object") {
-      ({ indexName, deferrable, useConstraint, predicate } = indexName);
-    }
-    if (deferrable && deferrable !== "not deferrable") {
-      this.client.logger.warn(
-        `ibmi: unique index [${indexName}] will not be deferrable ${deferrable} because mssql does not support deferred constraints.`
-      );
-    }
-    if (useConstraint && predicate) {
-      throw new Error("ibmi cannot create constraint with predicate");
-    }
-    indexName = indexName ? this.formatter.wrap(indexName) : this._indexCommand("unique", this.tableNameRaw, columns);
-    if (!Array.isArray(columns)) {
-      columns = [columns];
-    }
-    if (useConstraint) {
-      this.pushQuery(
-        `ALTER TABLE ${this.tableName()} ADD CONSTRAINT ${indexName} UNIQUE (${this.formatter.columnize(
-          columns
-        )})`
-      );
-    } else {
-      const predicateQuery = predicate ? " " + this.client.queryCompiler(predicate).where() : " WHERE " + columns.map((column) => this.formatter.columnize(column) + " IS NOT NULL").join(" AND ");
-      this.pushQuery(
-        `CREATE UNIQUE INDEX ${indexName} ON ${this.tableName()} (${this.formatter.columnize(
-          columns
-        )})${predicateQuery}`
-      );
-    }
-  }
   createQuery(columns, ifNot, like) {
     let createStatement = ifNot ? `if object_id('${this.tableName()}', 'U') is null ` : "";
     if (like) {
       createStatement += `SELECT * INTO ${this.tableName()} FROM ${this.tableNameLike()} WHERE 0=1`;
     } else {
-      createStatement += "CREATE TABLE " + this.tableName() + (this._formatting ? " (\n    " : " (") + columns.sql.join(this._formatting ? ",\n    " : ", ") + this._addChecks() + ")";
+      createStatement += "CREATE TABLE " + // @ts-ignore
+      this.tableName() + // @ts-ignore
+      (this._formatting ? " (\n    " : " (") + // @ts-ignore
+      columns.sql.join(this._formatting ? ",\n    " : ", ") + // @ts-ignore
+      this._addChecks() + ")";
     }
     this.pushQuery(createStatement);
     if (this.single.comment) {
@@ -109,7 +79,11 @@ var IBMiTableCompiler = class extends TableCompiler {
         return prefix + column;
       });
       this.pushQuery({
-        sql: (this.lowerCase ? "alter table " : "ALTER TABLE ") + this.tableName() + " " + columnSql.join(" "),
+        sql: (
+          // @ts-ignore
+          (this.lowerCase ? "alter table " : "ALTER TABLE ") + // @ts-ignore
+          this.tableName() + " " + columnSql.join(" ")
+        ),
         bindings: columns.bindings
       });
     }
@@ -122,32 +96,17 @@ var ibmi_tablecompiler_default = IBMiTableCompiler;
 
 // src/schema/ibmi-columncompiler.ts
 import ColumnCompiler from "knex/lib/schema/columncompiler";
-import * as console2 from "console";
 var IBMiColumnCompiler = class extends ColumnCompiler {
-  constructor(client, tableCompiler, columnBuilder) {
-    super(client, tableCompiler, columnBuilder);
-  }
   increments(options = { primaryKey: true }) {
-    return "int not null generated always as identity (start with 1, increment by 1)" + (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
-  }
-  datetime(withoutTz = false, precision) {
-    let useTz;
-    if (isObject(withoutTz)) {
-      ({ useTz, precision } = withoutTz);
-    } else {
-      useTz = !withoutTz;
-    }
-    useTz = typeof useTz === "boolean" ? useTz : true;
-    precision = precision !== void 0 && precision !== null ? "(" + precision + ")" : "";
-    console2.log(useTz, precision);
-    return `${useTz ? "timestamptz" : "timestamp"}${precision}`;
+    return "int not null generated always as identity (start with 1, increment by 1)" + // @ts-ignore
+    (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
   }
 };
 var ibmi_columncompiler_default = IBMiColumnCompiler;
 
 // src/execution/ibmi-transaction.ts
 import Transaction from "knex/lib/execution/transaction";
-import * as console3 from "console";
+import * as console2 from "console";
 var IBMiTransaction = class extends Transaction {
   async begin(conn) {
     const connection = await conn.connect();
@@ -155,7 +114,7 @@ var IBMiTransaction = class extends Transaction {
     return connection;
   }
   async rollback(conn) {
-    console3.log({ conn });
+    console2.log({ conn });
     const connection = await conn.connect();
     await connection.rollback();
     return connection;
@@ -169,34 +128,25 @@ var ibmi_transaction_default = IBMiTransaction;
 
 // src/query/ibmi-querycompiler.ts
 import QueryCompiler from "knex/lib/query/querycompiler";
-import has from "lodash/has";
-import isEmpty from "lodash/isEmpty";
-import omitBy from "lodash/omitBy";
-import isObject2 from "lodash/isObject";
-import {
-  wrap as wrap_,
-  rawOrFn as rawOrFn_
-} from "knex/lib/formatter/wrappingFormatter";
+import isObject from "lodash/isObject";
+import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
 import { format } from "date-fns";
-import * as console4 from "console";
 var IBMiQueryCompiler = class extends QueryCompiler {
   _prepInsert(data) {
-    if (isObject2(data)) {
-      console4.log("data is object", data);
+    if (isObject(data)) {
       if (data.hasOwnProperty("migration_time")) {
-        console4.log("data has migration_time", data.migration_time);
         const parsed = new Date(data.migration_time);
-        console4.log(parsed);
         data.migration_time = format(parsed, "yyyy-MM-dd HH:mm:ss");
-        console4.log(data.migration_time);
       }
-      console4.log("data date after change", data);
     }
     const isRaw = rawOrFn_(
       data,
       void 0,
+      // @ts-ignore
       this.builder,
+      // @ts-ignore
       this.client,
+      // @ts-ignore
       this.bindingsHolder
     );
     if (isRaw)
@@ -234,54 +184,6 @@ var IBMiQueryCompiler = class extends QueryCompiler {
       columns,
       values
     };
-  }
-  _prepUpdate(data = {}) {
-    const { counter = {} } = this.single;
-    for (const column of Object.keys(counter)) {
-      if (has(data, column)) {
-        this.client.logger.warn(
-          `increment/decrement called for a column that has already been specified in main .update() call. Ignoring increment/decrement and using value from .update() call.`
-        );
-        continue;
-      }
-      let value = counter[column];
-      const symbol = value < 0 ? "-" : "+";
-      if (symbol === "-") {
-        value = -value;
-      }
-      data[column] = this.client.raw(`?? ${symbol} ?`, [column, value]);
-    }
-    data = omitBy(data, (value) => typeof value === "undefined");
-    const vals = [];
-    const columns = Object.keys(data);
-    let i = -1;
-    while (++i < columns.length) {
-      vals.push(
-        wrap_(
-          columns[i],
-          void 0,
-          this.builder,
-          this.client,
-          this.bindingsHolder
-        ) + " = " + this.client.parameter(
-          data[columns[i]],
-          this.builder,
-          this.bindingsHolder
-        )
-      );
-    }
-    if (isEmpty(vals)) {
-      throw new Error(
-        [
-          "Empty .update() call detected!",
-          "Update data does not contain any values to update.",
-          "This will result in a faulty query.",
-          this.single.table ? `Table: ${this.single.table}.` : "",
-          this.single.update ? `Columns: ${Object.keys(this.single.update)}.` : ""
-        ].join(" ")
-      );
-    }
-    return vals;
   }
 };
 var ibmi_querycompiler_default = IBMiQueryCompiler;
@@ -335,13 +237,13 @@ var DB2Client = class extends knex.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    console5.log(this._getConnectionString(connectionConfig));
+    console3.log(this._getConnectionString(connectionConfig));
     return await this.driver.pool(this._getConnectionString(connectionConfig));
   }
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection) {
-    console5.log("destroy connection");
+    console3.log("destroy connection");
     return await connection.close();
   }
   _getConnectionString(connectionConfig) {
@@ -377,14 +279,14 @@ var DB2Client = class extends knex.Client {
         const result = await statement.execute();
         obj.response = { rows: [result.count], rowCount: result.count };
       } catch (err) {
-        console5.error(err);
+        console3.error(err);
         throw new Error(err);
       }
     }
-    console5.log({ obj });
+    console3.log({ obj });
     return obj;
   }
-  transaction() {
+  transaction(container, config, outerTx) {
     return new ibmi_transaction_default(this, ...arguments);
   }
   schemaCompiler() {

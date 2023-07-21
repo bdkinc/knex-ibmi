@@ -1,6 +1,6 @@
 import * as process from "process";
 import { Connection } from "odbc";
-import knex from "knex";
+import knex, { Knex } from "knex";
 import * as odbc from "odbc";
 import * as console from "console";
 import SchemaCompiler from "./schema/ibmi-compiler";
@@ -139,7 +139,7 @@ class DB2Client extends knex.Client {
     return obj;
   }
 
-  transaction() {
+  transaction(container: any, config: any, outerTx: any): Knex.Transaction {
     // @ts-ignore
     return new Transaction(this, ...arguments);
   }

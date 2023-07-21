@@ -1,4 +1,4 @@
-[![npm version](http://img.shields.io/npm/v/knex-db2.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
+[![npm version](http://img.shields.io/npm/v/@bdkinc/knex-ibmi.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
 
 **Disclaimer: this library is in early stages of development. Please submit an issue for any bugs encounter or any questions you have.**
 
