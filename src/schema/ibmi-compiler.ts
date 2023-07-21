@@ -7,20 +7,27 @@ class IBMiSchemaCompiler extends SchemaCompiler {
   }
 
   hasTable(tableName) {
+    // @ts-ignore
     const formattedTable = this.client.parameter(
+      // @ts-ignore
       prefixedTableName(this.schema, tableName),
+      // @ts-ignore
       this.builder,
+      // @ts-ignore
       this.bindingsHolder,
     );
     const bindings = [tableName.toUpperCase()];
     let sql =
       `SELECT TABLE_NAME FROM QSYS2.SYSTABLES ` +
       `WHERE TYPE = 'T' AND TABLE_NAME = ${formattedTable}`;
+    // @ts-ignore
     if (this.schema) {
       sql += " AND TABLE_SCHEMA = ?";
+      // @ts-ignore
       bindings.push(this.schema);
     }
 
+    // @ts-ignore
     this.pushQuery({
       sql,
       bindings,

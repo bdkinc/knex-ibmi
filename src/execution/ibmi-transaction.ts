@@ -1,6 +1,5 @@
 import Transaction from "knex/lib/execution/transaction";
 import * as console from "console";
-import { connect } from "odbc";
 
 class IBMiTransaction extends Transaction {
   async begin(conn) {
