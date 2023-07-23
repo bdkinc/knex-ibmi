@@ -118,7 +118,6 @@ class DB2Client extends knex.Client {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        console.log({ result });
         obj.response = { rows: [result.count], rowCount: result.count };
       } catch (err: any) {
         console.error(err);

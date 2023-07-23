@@ -38,7 +38,6 @@ class IBMiSchemaCompiler extends SchemaCompiler {
     const sequence = this.builder._sequence;
     for (let i = 0, l = sequence.length; i < l; i++) {
       const query = sequence[i];
-      console.log(query.method, query);
       this[query.method].apply(this, query.args);
     }
     // @ts-ignore
