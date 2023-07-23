@@ -43,9 +43,6 @@ var console2 = __toESM(require("console"));
 var import_compiler = __toESM(require("knex/lib/schema/compiler"));
 var console = __toESM(require("console"));
 var IBMiSchemaCompiler = class extends import_compiler.default {
-  constructor(client, builder) {
-    super(client, builder);
-  }
   hasTable(tableName) {
     const formattedTable = this.client.parameter(
       // @ts-ignore
@@ -328,7 +325,8 @@ var DB2Client = class extends import_knex.default.Client {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        obj.response = { rowCount: result.count };
+        console2.log({ result });
+        obj.response = { rows: [result.count], rowCount: result.count };
       } catch (err) {
         console2.error(err);
         throw new Error(err);
@@ -357,7 +355,6 @@ var DB2Client = class extends import_knex.default.Client {
     const resp = obj.response;
     const method = obj.sqlMethod;
     const { rows } = resp;
-    console2.log({ method, rows });
     if (obj.output)
       return obj.output.call(runner, resp);
     switch (method) {
@@ -368,6 +365,7 @@ var DB2Client = class extends import_knex.default.Client {
       case "first":
         return rows[0];
       case "insert":
+        return rows;
       case "del":
       case "delete":
       case "update":

@@ -2,10 +2,6 @@ import SchemaCompiler from "knex/lib/schema/compiler";
 import * as console from "console";
 
 class IBMiSchemaCompiler extends SchemaCompiler {
-  constructor(client, builder) {
-    super(client, builder);
-  }
-
   hasTable(tableName) {
     // @ts-ignore
     const formattedTable = this.client.parameter(

@@ -118,7 +118,8 @@ class DB2Client extends knex.Client {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        obj.response = { rowCount: result.count };
+        console.log({ result });
+        obj.response = { rows: [result.count], rowCount: result.count };
       } catch (err: any) {
         console.error(err);
         throw new Error(err);
@@ -154,13 +155,11 @@ class DB2Client extends knex.Client {
   }
 
   processResponse(obj: any, runner: any) {
-    // TODO: verify correctness
     if (obj === null) return null;
 
     const resp = obj.response;
     const method = obj.sqlMethod;
     const { rows } = resp;
-    console.log({ method, rows });
 
     if (obj.output) return obj.output.call(runner, resp);
 
@@ -172,6 +171,7 @@ class DB2Client extends knex.Client {
       case "first":
         return rows[0];
       case "insert":
+        return rows;
       case "del":
       case "delete":
       case "update":
