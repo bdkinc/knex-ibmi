@@ -9,7 +9,6 @@ class IBMiTransaction extends Transaction {
   }
 
   async rollback(conn) {
-    console.log({ conn });
     const connection = await conn.connect();
     await connection.rollback();
     return connection;

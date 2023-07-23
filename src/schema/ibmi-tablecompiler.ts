@@ -1,4 +1,5 @@
 import TableCompiler from "knex/lib/schema/tablecompiler";
+import isObject from "lodash/isObject";
 
 class IBMiTableCompiler extends TableCompiler {
   createQuery(columns, ifNot, like) {
@@ -37,6 +38,48 @@ class IBMiTableCompiler extends TableCompiler {
       // @ts-ignore
       this.addColumns(columns, this.addColumnsPrefix);
     }
+  }
+
+  dropUnique(columns, indexName) {
+    indexName = indexName
+      // @ts-ignore
+      ? this.formatter.wrap(indexName)
+      // @ts-ignore
+      : this._indexCommand('unique', this.tableNameRaw, columns);
+    // @ts-ignore
+    this.pushQuery(`drop index ${indexName}`);
+  }
+
+  unique(columns, indexName) {
+    let deferrable;
+    let predicate;
+    if (isObject(indexName)) {
+      ({ indexName, deferrable, predicate } = indexName);
+    }
+    if (deferrable && deferrable !== 'not deferrable') {
+      // @ts-ignore
+      this.client.logger.warn(
+        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`
+      );
+    }
+    indexName = indexName
+      // @ts-ignore
+      ? this.formatter.wrap(indexName)
+      // @ts-ignore
+      : this._indexCommand('unique', this.tableNameRaw, columns);
+    // @ts-ignore
+    columns = this.formatter.columnize(columns);
+
+    const predicateQuery = predicate
+      // @ts-ignore
+      ? ' ' + this.client.queryCompiler(predicate).where()
+      : '';
+
+    // @ts-ignore
+    this.pushQuery(
+      // @ts-ignore
+      `CREATE UNIQUE INDEX ${indexName} ON ${this.tableName()} (${columns})${predicateQuery}`
+    );
   }
 
   // All of the columns to "add" for the query

@@ -12,7 +12,6 @@ import QueryCompiler from "./query/ibmi-querycompiler";
 class DB2Client extends knex.Client {
   constructor(config) {
     super(config);
-
     this.driverName = "odbc";
 
     if (this.dialect && !this.config.client) {
@@ -47,15 +46,6 @@ class DB2Client extends knex.Client {
 
   _driver() {
     return odbc;
-  }
-
-  wrapIdentifierImpl(value: any) {
-    // override default wrapper ("). we don't want to use it since
-    // it makes identifiers case-sensitive in DB2
-    if (value.includes("knex_migrations")) {
-      return value.toUpperCase();
-    }
-    return value;
   }
 
   printDebug(message: string) {
@@ -128,13 +118,12 @@ class DB2Client extends knex.Client {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        obj.response = { rows: [result.count], rowCount: result.count };
+        obj.response = { rowCount: result.count };
       } catch (err: any) {
         console.error(err);
         throw new Error(err);
       }
     }
-    console.log({ obj });
 
     return obj;
   }
@@ -171,16 +160,17 @@ class DB2Client extends knex.Client {
     const resp = obj.response;
     const method = obj.sqlMethod;
     const { rows } = resp;
+    console.log({ method, rows });
 
     if (obj.output) return obj.output.call(runner, resp);
 
     switch (method) {
       case "select":
+        return rows;
       case "pluck":
-      case "first": {
-        if (method === "pluck") return rows.map(obj.pluck);
-        return method === "first" ? rows[0] : rows;
-      }
+        return rows.map(obj.pluck);
+      case "first":
+        return rows[0];
       case "insert":
       case "del":
       case "delete":

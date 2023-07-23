@@ -16,7 +16,7 @@ class IBMiSchemaCompiler extends SchemaCompiler {
       // @ts-ignore
       this.bindingsHolder,
     );
-    const bindings = [tableName.toUpperCase()];
+    const bindings = [tableName];
     let sql =
       `SELECT TABLE_NAME FROM QSYS2.SYSTABLES ` +
       `WHERE TYPE = 'T' AND TABLE_NAME = ${formattedTable}`;

@@ -2,7 +2,7 @@
 import * as process from "process";
 import knex from "knex";
 import * as odbc from "odbc";
-import * as console3 from "console";
+import * as console2 from "console";
 
 // src/schema/ibmi-compiler.ts
 import SchemaCompiler from "knex/lib/schema/compiler";
@@ -20,7 +20,7 @@ var IBMiSchemaCompiler = class extends SchemaCompiler {
       // @ts-ignore
       this.bindingsHolder
     );
-    const bindings = [tableName.toUpperCase()];
+    const bindings = [tableName];
     let sql = `SELECT TABLE_NAME FROM QSYS2.SYSTABLES WHERE TYPE = 'T' AND TABLE_NAME = ${formattedTable}`;
     if (this.schema) {
       sql += " AND TABLE_SCHEMA = ?";
@@ -51,6 +51,7 @@ var ibmi_compiler_default = IBMiSchemaCompiler;
 
 // src/schema/ibmi-tablecompiler.ts
 import TableCompiler from "knex/lib/schema/tablecompiler";
+import isObject from "lodash/isObject";
 var IBMiTableCompiler = class extends TableCompiler {
   createQuery(columns, ifNot, like) {
     let createStatement = ifNot ? `if object_id('${this.tableName()}', 'U') is null ` : "";
@@ -70,6 +71,29 @@ var IBMiTableCompiler = class extends TableCompiler {
     if (like) {
       this.addColumns(columns, this.addColumnsPrefix);
     }
+  }
+  dropUnique(columns, indexName) {
+    indexName = indexName ? this.formatter.wrap(indexName) : this._indexCommand("unique", this.tableNameRaw, columns);
+    this.pushQuery(`drop index ${indexName}`);
+  }
+  unique(columns, indexName) {
+    let deferrable;
+    let predicate;
+    if (isObject(indexName)) {
+      ({ indexName, deferrable, predicate } = indexName);
+    }
+    if (deferrable && deferrable !== "not deferrable") {
+      this.client.logger.warn(
+        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`
+      );
+    }
+    indexName = indexName ? this.formatter.wrap(indexName) : this._indexCommand("unique", this.tableNameRaw, columns);
+    columns = this.formatter.columnize(columns);
+    const predicateQuery = predicate ? " " + this.client.queryCompiler(predicate).where() : "";
+    this.pushQuery(
+      // @ts-ignore
+      `CREATE UNIQUE INDEX ${indexName} ON ${this.tableName()} (${columns})${predicateQuery}`
+    );
   }
   // All of the columns to "add" for the query
   addColumns(columns, prefix) {
@@ -106,7 +130,6 @@ var ibmi_columncompiler_default = IBMiColumnCompiler;
 
 // src/execution/ibmi-transaction.ts
 import Transaction from "knex/lib/execution/transaction";
-import * as console2 from "console";
 var IBMiTransaction = class extends Transaction {
   async begin(conn) {
     const connection = await conn.connect();
@@ -114,7 +137,6 @@ var IBMiTransaction = class extends Transaction {
     return connection;
   }
   async rollback(conn) {
-    console2.log({ conn });
     const connection = await conn.connect();
     await connection.rollback();
     return connection;
@@ -128,12 +150,12 @@ var ibmi_transaction_default = IBMiTransaction;
 
 // src/query/ibmi-querycompiler.ts
 import QueryCompiler from "knex/lib/query/querycompiler";
-import isObject from "lodash/isObject";
+import isObject2 from "lodash/isObject";
 import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
 import { format } from "date-fns";
 var IBMiQueryCompiler = class extends QueryCompiler {
   _prepInsert(data) {
-    if (isObject(data)) {
+    if (isObject2(data)) {
       if (data.hasOwnProperty("migration_time")) {
         const parsed = new Date(data.migration_time);
         data.migration_time = format(parsed, "yyyy-MM-dd HH:mm:ss");
@@ -221,12 +243,6 @@ var DB2Client = class extends knex.Client {
   _driver() {
     return odbc;
   }
-  wrapIdentifierImpl(value) {
-    if (value.includes("knex_migrations")) {
-      return value.toUpperCase();
-    }
-    return value;
-  }
   printDebug(message) {
     if (process.env.DEBUG === "true") {
       this.logger.debug(message);
@@ -237,13 +253,13 @@ var DB2Client = class extends knex.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    console3.log(this._getConnectionString(connectionConfig));
+    console2.log(this._getConnectionString(connectionConfig));
     return await this.driver.pool(this._getConnectionString(connectionConfig));
   }
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection) {
-    console3.log("destroy connection");
+    console2.log("destroy connection");
     return await connection.close();
   }
   _getConnectionString(connectionConfig) {
@@ -277,13 +293,12 @@ var DB2Client = class extends knex.Client {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        obj.response = { rows: [result.count], rowCount: result.count };
+        obj.response = { rowCount: result.count };
       } catch (err) {
-        console3.error(err);
+        console2.error(err);
         throw new Error(err);
       }
     }
-    console3.log({ obj });
     return obj;
   }
   transaction(container, config, outerTx) {
@@ -307,16 +322,16 @@ var DB2Client = class extends knex.Client {
     const resp = obj.response;
     const method = obj.sqlMethod;
     const { rows } = resp;
+    console2.log({ method, rows });
     if (obj.output)
       return obj.output.call(runner, resp);
     switch (method) {
       case "select":
+        return rows;
       case "pluck":
-      case "first": {
-        if (method === "pluck")
-          return rows.map(obj.pluck);
-        return method === "first" ? rows[0] : rows;
-      }
+        return rows.map(obj.pluck);
+      case "first":
+        return rows[0];
       case "insert":
       case "del":
       case "delete":
