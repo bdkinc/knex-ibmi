@@ -37,11 +37,10 @@ module.exports = __toCommonJS(src_exports);
 var process = __toESM(require("process"));
 var import_knex = __toESM(require("knex"));
 var odbc = __toESM(require("odbc"));
-var console2 = __toESM(require("console"));
+var console = __toESM(require("console"));
 
 // src/schema/ibmi-compiler.ts
 var import_compiler = __toESM(require("knex/lib/schema/compiler"));
-var console = __toESM(require("console"));
 var IBMiSchemaCompiler = class extends import_compiler.default {
   hasTable(tableName) {
     const formattedTable = this.client.parameter(
@@ -70,7 +69,6 @@ var IBMiSchemaCompiler = class extends import_compiler.default {
     const sequence = this.builder._sequence;
     for (let i = 0, l = sequence.length; i < l; i++) {
       const query = sequence[i];
-      console.log(query.method, query);
       this[query.method].apply(this, query.args);
     }
     return this.sequence;
@@ -285,13 +283,13 @@ var DB2Client = class extends import_knex.default.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    console2.log(this._getConnectionString(connectionConfig));
+    console.log(this._getConnectionString(connectionConfig));
     return await this.driver.pool(this._getConnectionString(connectionConfig));
   }
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection) {
-    console2.log("destroy connection");
+    console.log("destroy connection");
     return await connection.close();
   }
   _getConnectionString(connectionConfig) {
@@ -325,10 +323,9 @@ var DB2Client = class extends import_knex.default.Client {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        console2.log({ result });
         obj.response = { rows: [result.count], rowCount: result.count };
       } catch (err) {
-        console2.error(err);
+        console.error(err);
         throw new Error(err);
       }
     }
