@@ -1,5 +1,4 @@
 import Transaction from "knex/lib/execution/transaction";
-import * as console from "console";
 
 class IBMiTransaction extends Transaction {
   async begin(conn) {

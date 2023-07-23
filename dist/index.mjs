@@ -2,15 +2,11 @@
 import * as process from "process";
 import knex from "knex";
 import * as odbc from "odbc";
-import * as console2 from "console";
+import * as console from "console";
 
 // src/schema/ibmi-compiler.ts
 import SchemaCompiler from "knex/lib/schema/compiler";
-import * as console from "console";
 var IBMiSchemaCompiler = class extends SchemaCompiler {
-  constructor(client, builder) {
-    super(client, builder);
-  }
   hasTable(tableName) {
     const formattedTable = this.client.parameter(
       // @ts-ignore
@@ -38,7 +34,6 @@ var IBMiSchemaCompiler = class extends SchemaCompiler {
     const sequence = this.builder._sequence;
     for (let i = 0, l = sequence.length; i < l; i++) {
       const query = sequence[i];
-      console.log(query.method, query);
       this[query.method].apply(this, query.args);
     }
     return this.sequence;
@@ -253,13 +248,13 @@ var DB2Client = class extends knex.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    console2.log(this._getConnectionString(connectionConfig));
+    console.log(this._getConnectionString(connectionConfig));
     return await this.driver.pool(this._getConnectionString(connectionConfig));
   }
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection) {
-    console2.log("destroy connection");
+    console.log("destroy connection");
     return await connection.close();
   }
   _getConnectionString(connectionConfig) {
@@ -293,9 +288,9 @@ var DB2Client = class extends knex.Client {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        obj.response = { rowCount: result.count };
+        obj.response = { rows: [result.count], rowCount: result.count };
       } catch (err) {
-        console2.error(err);
+        console.error(err);
         throw new Error(err);
       }
     }
@@ -322,7 +317,6 @@ var DB2Client = class extends knex.Client {
     const resp = obj.response;
     const method = obj.sqlMethod;
     const { rows } = resp;
-    console2.log({ method, rows });
     if (obj.output)
       return obj.output.call(runner, resp);
     switch (method) {
@@ -333,6 +327,7 @@ var DB2Client = class extends knex.Client {
       case "first":
         return rows[0];
       case "insert":
+        return rows;
       case "del":
       case "delete":
       case "update":
