@@ -1,21 +1,14 @@
-## 1.0.0 - 15 Feb 2019
-- Bump up to 1.0.0 to follow semver rules
-- Internal enhancements
+## 0.0.5 - July 23rd, 2023
+- add unique and dropUnique methods
 
-## 0.1.5 - 10 Dec 2018
-- Documentation updates
+## 0.0.4 - July 21st, 2023
+- remove unnecessary compiler methods
 
-## 0.1.4 - 18 Nov 2018
-- Support Node v6
+## 0.0.3 - July 19th, 2023
+- add transaction support
 
-## 0.1.3 - 17 Nov 2018
-- Don't show debug logs by default #6
+## 0.0.2 - July 15th, 2023
+- update readme and code examples
 
-## 0.1.2 - 5 Oct 2018
-- Make SQL method case-insensitive (fixes #3)
-
-## 0.1.1 - 4 Oct 2018
-- Fix raw queries not running as expected #3
-
-## 0.1.0 - 29 Sep 2018
-- Initial release
+## 0.0.1 - July 14th, 2023
+- Imported DB2 Dialect and re-wrote
