@@ -19,6 +19,7 @@ Currently, this dialect has limited functionality compared to the Knex built-in 
 - No streaming support
 - Possibly other missing functionality
 - Uses a pool for all connections
+- Journaling must be handled separately. After a migration is ran journaling can be configured on the newly created tables. I recommend using the schema utility in the i access client solutions software. 
 
 ## Installing
 

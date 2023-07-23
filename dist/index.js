@@ -37,7 +37,7 @@ module.exports = __toCommonJS(src_exports);
 var process = __toESM(require("process"));
 var import_knex = __toESM(require("knex"));
 var odbc = __toESM(require("odbc"));
-var console3 = __toESM(require("console"));
+var console2 = __toESM(require("console"));
 
 // src/schema/ibmi-compiler.ts
 var import_compiler = __toESM(require("knex/lib/schema/compiler"));
@@ -55,7 +55,7 @@ var IBMiSchemaCompiler = class extends import_compiler.default {
       // @ts-ignore
       this.bindingsHolder
     );
-    const bindings = [tableName.toUpperCase()];
+    const bindings = [tableName];
     let sql = `SELECT TABLE_NAME FROM QSYS2.SYSTABLES WHERE TYPE = 'T' AND TABLE_NAME = ${formattedTable}`;
     if (this.schema) {
       sql += " AND TABLE_SCHEMA = ?";
@@ -86,6 +86,7 @@ var ibmi_compiler_default = IBMiSchemaCompiler;
 
 // src/schema/ibmi-tablecompiler.ts
 var import_tablecompiler = __toESM(require("knex/lib/schema/tablecompiler"));
+var import_isObject = __toESM(require("lodash/isObject"));
 var IBMiTableCompiler = class extends import_tablecompiler.default {
   createQuery(columns, ifNot, like) {
     let createStatement = ifNot ? `if object_id('${this.tableName()}', 'U') is null ` : "";
@@ -105,6 +106,29 @@ var IBMiTableCompiler = class extends import_tablecompiler.default {
     if (like) {
       this.addColumns(columns, this.addColumnsPrefix);
     }
+  }
+  dropUnique(columns, indexName) {
+    indexName = indexName ? this.formatter.wrap(indexName) : this._indexCommand("unique", this.tableNameRaw, columns);
+    this.pushQuery(`drop index ${indexName}`);
+  }
+  unique(columns, indexName) {
+    let deferrable;
+    let predicate;
+    if ((0, import_isObject.default)(indexName)) {
+      ({ indexName, deferrable, predicate } = indexName);
+    }
+    if (deferrable && deferrable !== "not deferrable") {
+      this.client.logger.warn(
+        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`
+      );
+    }
+    indexName = indexName ? this.formatter.wrap(indexName) : this._indexCommand("unique", this.tableNameRaw, columns);
+    columns = this.formatter.columnize(columns);
+    const predicateQuery = predicate ? " " + this.client.queryCompiler(predicate).where() : "";
+    this.pushQuery(
+      // @ts-ignore
+      `CREATE UNIQUE INDEX ${indexName} ON ${this.tableName()} (${columns})${predicateQuery}`
+    );
   }
   // All of the columns to "add" for the query
   addColumns(columns, prefix) {
@@ -141,7 +165,6 @@ var ibmi_columncompiler_default = IBMiColumnCompiler;
 
 // src/execution/ibmi-transaction.ts
 var import_transaction = __toESM(require("knex/lib/execution/transaction"));
-var console2 = __toESM(require("console"));
 var IBMiTransaction = class extends import_transaction.default {
   async begin(conn) {
     const connection = await conn.connect();
@@ -149,7 +172,6 @@ var IBMiTransaction = class extends import_transaction.default {
     return connection;
   }
   async rollback(conn) {
-    console2.log({ conn });
     const connection = await conn.connect();
     await connection.rollback();
     return connection;
@@ -163,12 +185,12 @@ var ibmi_transaction_default = IBMiTransaction;
 
 // src/query/ibmi-querycompiler.ts
 var import_querycompiler = __toESM(require("knex/lib/query/querycompiler"));
-var import_isObject = __toESM(require("lodash/isObject"));
+var import_isObject2 = __toESM(require("lodash/isObject"));
 var import_wrappingFormatter = require("knex/lib/formatter/wrappingFormatter");
 var import_date_fns = require("date-fns");
 var IBMiQueryCompiler = class extends import_querycompiler.default {
   _prepInsert(data) {
-    if ((0, import_isObject.default)(data)) {
+    if ((0, import_isObject2.default)(data)) {
       if (data.hasOwnProperty("migration_time")) {
         const parsed = new Date(data.migration_time);
         data.migration_time = (0, import_date_fns.format)(parsed, "yyyy-MM-dd HH:mm:ss");
@@ -256,12 +278,6 @@ var DB2Client = class extends import_knex.default.Client {
   _driver() {
     return odbc;
   }
-  wrapIdentifierImpl(value) {
-    if (value.includes("knex_migrations")) {
-      return value.toUpperCase();
-    }
-    return value;
-  }
   printDebug(message) {
     if (process.env.DEBUG === "true") {
       this.logger.debug(message);
@@ -272,13 +288,13 @@ var DB2Client = class extends import_knex.default.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    console3.log(this._getConnectionString(connectionConfig));
+    console2.log(this._getConnectionString(connectionConfig));
     return await this.driver.pool(this._getConnectionString(connectionConfig));
   }
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection) {
-    console3.log("destroy connection");
+    console2.log("destroy connection");
     return await connection.close();
   }
   _getConnectionString(connectionConfig) {
@@ -312,13 +328,12 @@ var DB2Client = class extends import_knex.default.Client {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        obj.response = { rows: [result.count], rowCount: result.count };
+        obj.response = { rowCount: result.count };
       } catch (err) {
-        console3.error(err);
+        console2.error(err);
         throw new Error(err);
       }
     }
-    console3.log({ obj });
     return obj;
   }
   transaction(container, config, outerTx) {
@@ -342,16 +357,16 @@ var DB2Client = class extends import_knex.default.Client {
     const resp = obj.response;
     const method = obj.sqlMethod;
     const { rows } = resp;
+    console2.log({ method, rows });
     if (obj.output)
       return obj.output.call(runner, resp);
     switch (method) {
       case "select":
+        return rows;
       case "pluck":
-      case "first": {
-        if (method === "pluck")
-          return rows.map(obj.pluck);
-        return method === "first" ? rows[0] : rows;
-      }
+        return rows.map(obj.pluck);
+      case "first":
+        return rows[0];
       case "insert":
       case "del":
       case "delete":
