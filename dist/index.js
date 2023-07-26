@@ -183,7 +183,57 @@ var import_querycompiler = __toESM(require("knex/lib/query/querycompiler"));
 var import_isObject2 = __toESM(require("lodash/isObject"));
 var import_wrappingFormatter = require("knex/lib/formatter/wrappingFormatter");
 var import_date_fns = require("date-fns");
+var import_isEmpty = __toESM(require("lodash/isEmpty"));
 var IBMiQueryCompiler = class extends import_querycompiler.default {
+  insert() {
+    const insertValues = this.single.insert || [];
+    let sql = `SELECT ${// @ts-ignore
+    this.single.returning ? (
+      // @ts-ignore
+      this.formatter.columnize(this.single.returning)
+    ) : "IDENTITY_VAL_LOCAL()"} FROM FINAL TABLE(`;
+    sql += this.with() + `insert into ${this.tableName} `;
+    const { returning } = this.single;
+    const returningSql = returning ? (
+      // @ts-ignore
+      this._returning("insert", returning) + " "
+    ) : "";
+    if (Array.isArray(insertValues)) {
+      if (insertValues.length === 0) {
+        return "";
+      }
+    } else if (typeof insertValues === "object" && (0, import_isEmpty.default)(insertValues)) {
+      return {
+        // @ts-ignore
+        sql: sql + returningSql + this._emptyInsertValue,
+        returning
+      };
+    }
+    sql += this._buildInsertData(insertValues, returningSql);
+    sql += ")";
+    return {
+      sql,
+      returning
+    };
+  }
+  _buildInsertData(insertValues, returningSql) {
+    let sql = "";
+    const insertData = this._prepInsert(insertValues);
+    if (typeof insertData === "string") {
+      sql += insertData;
+    } else {
+      if (insertData.columns.length) {
+        sql += `(${this.formatter.columnize(insertData.columns)}`;
+        sql += `) ${returningSql}values (` + // @ts-ignore
+        this._buildInsertValues(insertData) + ")";
+      } else if (insertValues.length === 1 && insertValues[0]) {
+        sql += returningSql + this._emptyInsertValue;
+      } else {
+        return "";
+      }
+    }
+    return sql;
+  }
   _prepInsert(data) {
     if ((0, import_isObject2.default)(data)) {
       if (data.hasOwnProperty("migration_time")) {
@@ -236,6 +286,33 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
       columns,
       values
     };
+  }
+  _returning(method, value, withTrigger) {
+    switch (method) {
+      case "update":
+      case "insert":
+        return value ? (
+          // @ts-ignore
+          `${withTrigger ? " into #out" : ""}`
+        ) : "";
+      case "del":
+        return value ? (
+          // @ts-ignore
+          `${withTrigger ? " into #out" : ""}`
+        ) : "";
+      case "rowcount":
+        return value ? ";select @@rowcount" : "";
+    }
+  }
+  columnizeWithPrefix(prefix, target) {
+    const columns = typeof target === "string" ? [target] : target;
+    let str = "", i = -1;
+    while (++i < columns.length) {
+      if (i > 0)
+        str += ", ";
+      str += prefix + this.wrap(columns[i]);
+    }
+    return str;
   }
 };
 var ibmi_querycompiler_default = IBMiQueryCompiler;
@@ -319,17 +396,53 @@ var DB2Client = class extends import_knex.default.Client {
         const connection = await pool.connect();
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
+        console.log({ obj });
         if (obj.bindings) {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        obj.response = { rows: [result.count], rowCount: result.count };
+        if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
+          obj.response = {
+            rows: result.map(
+              (row) => result.columns.length > 0 ? row[result.columns[0].name] : row
+            ),
+            rowCount: result.length
+          };
+        } else if (method === "update") {
+          console.log(this.queryCompiler);
+          let returningSelect = obj.sql.replace("update", "select * from ");
+          returningSelect = returningSelect.replace("where", "and");
+          returningSelect = returningSelect.replace("set", "where");
+          returningSelect = returningSelect.replace(this.tableName, "where");
+          const selectStatement = await connection.createStatement();
+          await selectStatement.prepare(returningSelect);
+          if (obj.bindings) {
+            await selectStatement.bind(obj.bindings);
+          }
+          const selected = await selectStatement.execute();
+          console.log(selected.columns);
+          obj.response = { rows: selected, rowCount: selected.length };
+        } else {
+          obj.response = { rows: result, rowCount: result.length };
+        }
       } catch (err) {
         console.error(err);
         throw new Error(err);
       }
     }
     return obj;
+  }
+  _selectAfterUpdate() {
+    const returnSelect = `; SELECT ${this.single.returning ? (
+      // @ts-ignore
+      this.formatter.columnize(this.single.returning)
+    ) : "*"} from ${this.tableName} `;
+    let whereStatement = [this.where()];
+    console.log({ whereStatement });
+    for (const [key, value] of Object.entries(this.single.update)) {
+      whereStatement.push(`WHERE ${key} = ${value}`);
+    }
+    return returnSelect + whereStatement.join(" and ");
   }
   transaction(container, config, outerTx) {
     return new ibmi_transaction_default(this, ...arguments);
@@ -366,6 +479,7 @@ var DB2Client = class extends import_knex.default.Client {
       case "del":
       case "delete":
       case "update":
+        return rows;
       case "counter":
         return resp.rowCount;
       default:
