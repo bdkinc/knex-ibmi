@@ -357,8 +357,9 @@ var DB2Client = class extends knex.Client {
         obj.response = { rows, rowCount: rows.length };
       }
     } else {
+      const connection = await pool.connect();
+      await connection.beginTransaction();
       try {
-        const connection = await pool.connect();
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
         console.log({ obj });
@@ -374,7 +375,6 @@ var DB2Client = class extends knex.Client {
             rowCount: result.length
           };
         } else if (method === "update") {
-          console.log(this.queryCompiler);
           let returningSelect = obj.sql.replace("update", "select * from ");
           returningSelect = returningSelect.replace("where", "and");
           returningSelect = returningSelect.replace("set", "where");
@@ -385,14 +385,18 @@ var DB2Client = class extends knex.Client {
             await selectStatement.bind(obj.bindings);
           }
           const selected = await selectStatement.execute();
-          console.log(selected.columns);
-          obj.response = { rows: selected, rowCount: selected.length };
+          obj.response = { rows: selected.map(
+            (row) => selected.columns.length > 0 ? row[selected.columns[0].name] : row
+          ), rowCount: selected.length };
         } else {
           obj.response = { rows: result, rowCount: result.length };
         }
       } catch (err) {
         console.error(err);
+        await connection.rollback();
         throw new Error(err);
+      } finally {
+        await connection.commit();
       }
     }
     return obj;
