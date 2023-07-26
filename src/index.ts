@@ -110,8 +110,9 @@ class DB2Client extends knex.Client {
         obj.response = { rows, rowCount: rows.length };
       }
     } else {
+      const connection = await pool.connect();
+      await connection.beginTransaction();
       try {
-        const connection = await pool.connect();
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
         console.log({ obj });
@@ -137,7 +138,6 @@ class DB2Client extends knex.Client {
           // it would be a lot easier if the table-reference function
           // worked the same for updates as it does inserts
           // on DB2 LUW it does work so if they ever add it we need to fix
-          console.log(this.queryCompiler)
           let returningSelect = obj.sql.replace("update", "select * from ");
           returningSelect = returningSelect.replace("where", "and");
           returningSelect = returningSelect.replace("set", "where");
@@ -148,15 +148,20 @@ class DB2Client extends knex.Client {
             await selectStatement.bind(obj.bindings);
           }
           const selected = await selectStatement.execute();
-          console.log(selected.columns)
-          obj.response = {rows: selected, rowCount: selected.length}
+          obj.response = {rows: selected.map((row) =>
+            selected.columns.length > 0 ? row[selected.columns[0].name] : row,
+          ), rowCount: selected.length}
         } else {
           obj.response = { rows: result, rowCount: result.length };
         }
       } catch (err: any) {
         console.error(err);
+        await connection.rollback()
         throw new Error(err);
+      } finally {
+        await connection.commit()
       }
+
     }
 
     return obj;
