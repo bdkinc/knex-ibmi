@@ -114,11 +114,45 @@ class DB2Client extends knex.Client {
         const connection = await pool.connect();
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
+        console.log({ obj });
         if (obj.bindings) {
           await statement.bind(obj.bindings);
         }
         const result = await statement.execute();
-        obj.response = { rows: [result.count], rowCount: result.count };
+        // this is hacky we check the SQL for the ID column
+        // most dialects return the ID of the inserted
+        // we check for the IDENTITY scalar function
+        // if that function is present, then we just return the value of the
+        // IDENTITY column
+        if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
+          obj.response = {
+            rows: result.map((row) =>
+              result.columns.length > 0 ? row[result.columns[0].name] : row,
+            ),
+            rowCount: result.length,
+          };
+        } else if (method === "update") {
+          // if is in update we need to run a separate select query
+          // this also feels hacky and should be cleaned up
+          // it would be a lot easier if the table-reference function
+          // worked the same for updates as it does inserts
+          // on DB2 LUW it does work so if they ever add it we need to fix
+          console.log(this.queryCompiler)
+          let returningSelect = obj.sql.replace("update", "select * from ");
+          returningSelect = returningSelect.replace("where", "and");
+          returningSelect = returningSelect.replace("set", "where");
+          returningSelect = returningSelect.replace(this.tableName, "where");
+          const selectStatement = await connection.createStatement();
+          await selectStatement.prepare(returningSelect);
+          if (obj.bindings) {
+            await selectStatement.bind(obj.bindings);
+          }
+          const selected = await selectStatement.execute();
+          console.log(selected.columns)
+          obj.response = {rows: selected, rowCount: selected.length}
+        } else {
+          obj.response = { rows: result, rowCount: result.length };
+        }
       } catch (err: any) {
         console.error(err);
         throw new Error(err);
@@ -126,6 +160,21 @@ class DB2Client extends knex.Client {
     }
 
     return obj;
+  }
+
+  _selectAfterUpdate() {
+    const returnSelect = `; SELECT ${
+      this.single.returning
+        ? // @ts-ignore
+          this.formatter.columnize(this.single.returning)
+        : "*"
+    } from ${this.tableName} `;
+    let whereStatement = [this.where()];
+    console.log({ whereStatement });
+    for (const [key, value] of Object.entries(this.single.update)) {
+      whereStatement.push(`WHERE ${key} = ${value}`);
+    }
+    return returnSelect + whereStatement.join(" and ");
   }
 
   transaction(container: any, config: any, outerTx: any): Knex.Transaction {
@@ -174,6 +223,7 @@ class DB2Client extends knex.Client {
       case "del":
       case "delete":
       case "update":
+        return rows;
       case "counter":
         return resp.rowCount;
       default:
