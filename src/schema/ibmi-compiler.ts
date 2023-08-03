@@ -1,5 +1,4 @@
 import SchemaCompiler from "knex/lib/schema/compiler";
-import * as console from "console";
 
 class IBMiSchemaCompiler extends SchemaCompiler {
   hasTable(tableName) {

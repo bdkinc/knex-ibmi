@@ -1,6 +1,6 @@
 [![npm version](http://img.shields.io/npm/v/@bdkinc/knex-ibmi.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
 
-**Disclaimer: this library is in early stages of development. Please submit an issue for any bugs encounter or any questions you have.**
+**Disclaimer: this library is in alpha. Please submit an issue for any bugs encounter or any questions you have.**
 
 ## Description
 

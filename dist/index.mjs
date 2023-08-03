@@ -1,6 +1,6 @@
 // src/index.ts
 import * as process from "process";
-import knex from "knex";
+import { knex } from "knex";
 import * as odbc from "odbc";
 import * as console from "console";
 
@@ -326,7 +326,19 @@ var DB2Client = class extends knex.Client {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
     console.log(this._getConnectionString(connectionConfig));
-    return await this.driver.pool(this._getConnectionString(connectionConfig));
+    if (this.pool) {
+      const pool = await this.driver.pool({
+        connectionString: this._getConnectionString(connectionConfig),
+        connectionTimeout: this.pool?.acquireTimeoutMillis || 6e4,
+        initialSize: this.pool?.min || 2,
+        maxSize: this.pool?.max || 10,
+        reuseConnection: true
+      });
+      return await pool.connect();
+    }
+    return await this.driver.connect(
+      this._getConnectionString(connectionConfig)
+    );
   }
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
@@ -346,19 +358,19 @@ var DB2Client = class extends knex.Client {
   }
   // Runs the query on the specified connection, providing the bindings
   // and any other necessary prep work.
-  async _query(pool, obj) {
+  async _query(connection, obj) {
     if (!obj || typeof obj == "string")
       obj = { sql: obj };
     const method = (obj.hasOwnProperty("method") && obj.method !== "raw" ? obj.method : obj.sql.split(" ")[0]).toLowerCase();
     obj.sqlMethod = method;
     if (method === "select" || method === "first" || method === "pluck") {
-      const rows = await pool.query(obj.sql, obj.bindings);
+      const rows = await connection.query(obj.sql, obj.bindings);
       if (rows) {
         obj.response = { rows, rowCount: rows.length };
       }
     } else {
-      const connection = await pool.connect();
       await connection.beginTransaction();
+      console.log("transaction begun");
       try {
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
@@ -385,17 +397,20 @@ var DB2Client = class extends knex.Client {
             await selectStatement.bind(obj.bindings);
           }
           const selected = await selectStatement.execute();
-          obj.response = { rows: selected.map(
-            (row) => selected.columns.length > 0 ? row[selected.columns[0].name] : row
-          ), rowCount: selected.length };
+          obj.response = {
+            rows: selected.map(
+              (row) => selected.columns.length > 0 ? row[selected.columns[0].name] : row
+            ),
+            rowCount: selected.length
+          };
         } else {
           obj.response = { rows: result, rowCount: result.length };
         }
       } catch (err) {
         console.error(err);
-        await connection.rollback();
         throw new Error(err);
       } finally {
+        console.log("transaction committed");
         await connection.commit();
       }
     }
