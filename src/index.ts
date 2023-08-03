@@ -64,12 +64,16 @@ class DB2Client extends knex.Client {
 
     console.log({ config: this.config, pool: this.pool });
 
+    // @ts-ignore
     if (this.config?.connection?.pool) {
       const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
         connectionTimeout:
+        // @ts-ignore
           this.config?.connection?.acquireConnectionTimeout || 60000,
+        // @ts-ignore
         initialSize: this.config?.connection?.pool?.min || 2,
+        // @ts-ignore
         maxSize: this.config?.connection?.pool?.max || 10,
         reuseConnection: true,
       };
@@ -261,7 +265,43 @@ class DB2Client extends knex.Client {
   }
 }
 
-export interface DB2Config extends Knex.Config {}
+interface DB2PoolConfig {
+  min: number;
+  max: number;
+}
+
+interface DB2ConnectionParams {
+  CMT?: number;
+  CONNTYPE?: number;
+  DBQ?: string;
+  MAXDECPREC?: 31 | 63;
+  MAXDECSCALE?: number;
+  MINDIVSCALE?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  NAM?: 0 | 1;
+  DFT?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  DSP?: 0 | 1 | 2 | 3 | 4;
+  DEC?: 0 | 1;
+  DECFLOATERROROPTION?: 0 | 1;
+  DECFLOATROUNDMODE?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  MAPDECIMALFLOATDESCRIBE?: 1 | 3;
+}
+
+interface DB2ConnectionConfig {
+  database: string;
+  host: string;
+  port: 50000 | number;
+  user: string;
+  password: string;
+  driver: "IBM i Access ODBC Driver" | string;
+  connectionStringParams?: DB2ConnectionParams;
+  pool?: DB2PoolConfig;
+}
+
+export interface DB2Config {
+  client: any;
+  connection: DB2ConnectionConfig;
+  pool?: DB2PoolConfig;
+}
 
 export const DB2Dialect = DB2Client;
 export default DB2Client;
