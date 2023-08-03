@@ -108,7 +108,7 @@ try {
 or as Typescript
 
 ```typescript
-import knex from "knex";
+import { knex } from "knex";
 import { Db2Dialect, DB2Config } from "knex-ibmi";
 
 const config: DB2Config = {
