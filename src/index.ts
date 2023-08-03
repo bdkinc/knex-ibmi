@@ -63,13 +63,15 @@ class DB2Client extends knex.Client {
     console.log(this._getConnectionString(connectionConfig));
 
     if (this.pool) {
-      const pool = await this.driver.pool({
+      const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
-        connectionTimeout: this.pool?.acquireTimeoutMillis || 60000,
-        initialSize: this.pool?.min || 2,
-        maxSize: this.pool?.max || 10,
+        connectionTimeout: this.config?.acquireConnectionTimeout || 60000,
+        initialSize: this.config.pool?.min || 2,
+        maxSize: this.config.pool?.max || 10,
         reuseConnection: true,
-      });
+      };
+      console.log({ poolConfig, pool: this.pool });
+      const pool = await this.driver.pool(poolConfig);
       return await pool.connect();
     }
 
@@ -105,8 +107,6 @@ class DB2Client extends knex.Client {
   // Runs the query on the specified connection, providing the bindings
   // and any other necessary prep work.
   async _query(connection: any, obj: any) {
-    // @ts-ignore
-    // TODO: verify correctness
     if (!obj || typeof obj == "string") obj = { sql: obj };
     const method = (
       obj.hasOwnProperty("method") && obj.method !== "raw"
@@ -155,6 +155,7 @@ class DB2Client extends knex.Client {
           let returningSelect = obj.sql.replace("update", "select * from ");
           returningSelect = returningSelect.replace("where", "and");
           returningSelect = returningSelect.replace("set", "where");
+          // @ts-ignore
           returningSelect = returningSelect.replace(this.tableName, "where");
           const selectStatement = await connection.createStatement();
           await selectStatement.prepare(returningSelect);
@@ -186,13 +187,17 @@ class DB2Client extends knex.Client {
 
   _selectAfterUpdate() {
     const returnSelect = `; SELECT ${
+      // @ts-ignore
       this.single.returning
         ? // @ts-ignore
           this.formatter.columnize(this.single.returning)
         : "*"
+      // @ts-ignore
     } from ${this.tableName} `;
+    // @ts-ignore
     let whereStatement = [this.where()];
     console.log({ whereStatement });
+    // @ts-ignore
     for (const [key, value] of Object.entries(this.single.update)) {
       whereStatement.push(`WHERE ${key} = ${value}`);
     }

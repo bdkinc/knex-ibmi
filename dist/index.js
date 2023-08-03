@@ -362,13 +362,15 @@ var DB2Client = class extends import_knex.knex.Client {
     const connectionConfig = this.config.connection;
     console.log(this._getConnectionString(connectionConfig));
     if (this.pool) {
-      const pool = await this.driver.pool({
+      const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
-        connectionTimeout: this.pool?.acquireTimeoutMillis || 6e4,
-        initialSize: this.pool?.min || 2,
-        maxSize: this.pool?.max || 10,
+        connectionTimeout: this.config?.acquireConnectionTimeout || 6e4,
+        initialSize: this.config.pool?.min || 2,
+        maxSize: this.config.pool?.max || 10,
         reuseConnection: true
-      });
+      };
+      console.log({ poolConfig, pool: this.pool });
+      const pool = await this.driver.pool(poolConfig);
       return await pool.connect();
     }
     return await this.driver.connect(
@@ -452,7 +454,8 @@ var DB2Client = class extends import_knex.knex.Client {
     return obj;
   }
   _selectAfterUpdate() {
-    const returnSelect = `; SELECT ${this.single.returning ? (
+    const returnSelect = `; SELECT ${// @ts-ignore
+    this.single.returning ? (
       // @ts-ignore
       this.formatter.columnize(this.single.returning)
     ) : "*"} from ${this.tableName} `;
