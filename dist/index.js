@@ -359,7 +359,6 @@ var DB2Client = class extends import_knex.knex.Client {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
     console.log(this._getConnectionString(connectionConfig));
-    console.log({ config: this.config, pool: this.pool });
     if (this.config?.connection?.pool) {
       const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
@@ -414,7 +413,6 @@ var DB2Client = class extends import_knex.knex.Client {
       try {
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
-        console.log({ obj });
         if (obj.bindings) {
           await statement.bind(obj.bindings);
         }
@@ -427,33 +425,50 @@ var DB2Client = class extends import_knex.knex.Client {
             rowCount: result.length
           };
         } else if (method === "update") {
-          let returningSelect = obj.sql.replace("update", "select * from ");
-          returningSelect = returningSelect.replace("where", "and");
-          returningSelect = returningSelect.replace("set", "where");
-          returningSelect = returningSelect.replace(this.tableName, "where");
-          const selectStatement = await connection.createStatement();
-          await selectStatement.prepare(returningSelect);
-          if (obj.bindings) {
-            await selectStatement.bind(obj.bindings);
+          if (obj.sql.includes("knex_migrations_lock")) {
+            console.log("migrations_lock");
+            const rows = await connection.query(
+              // @ts-ignore
+              `select * from "knex_migrations_lock"`
+            );
+            console.log({ rows });
+            console.log(rows.map((row) => row.index));
+            obj.response = {
+              rows: rows.length,
+              rowCount: rows.length
+            };
+          } else {
+            let returningSelect = obj.sql.replace("update", "select * from ");
+            returningSelect = returningSelect.replace("where", "and");
+            returningSelect = returningSelect.replace("set", "where");
+            returningSelect = returningSelect.replace(this.tableName, "where");
+            const selectStatement = await connection.createStatement();
+            await selectStatement.prepare(returningSelect);
+            console.log({ returningSelect });
+            if (obj.bindings) {
+              await selectStatement.bind(obj.bindings);
+            }
+            const selected = await selectStatement.execute();
+            obj.response = {
+              rows: selected.map(
+                (row) => selected.columns.length > 0 ? row[selected.columns[0].name] : row
+              ),
+              rowCount: selected.length
+            };
           }
-          const selected = await selectStatement.execute();
-          obj.response = {
-            rows: selected.map(
-              (row) => selected.columns.length > 0 ? row[selected.columns[0].name] : row
-            ),
-            rowCount: selected.length
-          };
         } else {
           obj.response = { rows: result, rowCount: result.length };
         }
       } catch (err) {
         console.error(err);
+        await connection.rollback();
         throw new Error(err);
       } finally {
         console.log("transaction committed");
         await connection.commit();
       }
     }
+    console.log({ obj });
     return obj;
   }
   _selectAfterUpdate() {
