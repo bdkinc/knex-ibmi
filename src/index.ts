@@ -62,15 +62,17 @@ class DB2Client extends knex.Client {
     const connectionConfig = this.config.connection;
     console.log(this._getConnectionString(connectionConfig));
 
-    if (this.pool) {
+    console.log({ config: this.config, pool: this.pool });
+
+    if (this.config?.connection?.pool) {
       const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
-        connectionTimeout: this.config.connection?.acquireConnectionTimeout || 60000,
-        initialSize: this.config.connection?.pool?.min || 2,
-        maxSize: this.config.connection?.pool?.max || 10,
+        connectionTimeout:
+          this.config?.connection?.acquireConnectionTimeout || 60000,
+        initialSize: this.config?.connection?.pool?.min || 2,
+        maxSize: this.config?.connection?.pool?.max || 10,
         reuseConnection: true,
       };
-      console.log({ config: this.config, pool: this.pool, poolConfig });
       const pool = await this.driver.pool(poolConfig);
       return await pool.connect();
     }
@@ -258,6 +260,8 @@ class DB2Client extends knex.Client {
     }
   }
 }
+
+export interface DB2Config extends Knex.Config {}
 
 export const DB2Dialect = DB2Client;
 export default DB2Client;

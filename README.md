@@ -17,9 +17,9 @@ This is an external dialect for [knex](https://github.com/tgriesser/knex). This 
 Currently, this dialect has limited functionality compared to the Knex built-in dialects. Below are some of the limitations:
 
 - No streaming support
-- Updates return the value of the first column in that row. Make sure your identifier is the first column in the table. The returning option does not work on updates. 
+- Updates return the value of the first column in that row. Make sure your identifier is the first column in the table. The returning option does not work on updates.
 - Possibly other missing functionality
-- Journaling must be handled separately. After a migration is ran journaling can be configured on the newly created tables. I recommend using the schema utility in the i access client solutions software. 
+- Journaling must be handled separately. After a migration is ran journaling can be configured on the newly created tables. I recommend using the schema utility in the i access client solutions software.
 
 ## Installing
 
@@ -103,6 +103,60 @@ try {
 } finally {
   process.exit();
 }
+```
+
+## Pooling
+
+There are 2 different pooling configurations, Tarn pooling and the Node-ODBC pooling. 
+Where the pool property is positioned dictates which pooling is used. To use node-odbc pooling the pool object needs to 
+be a property inside the connection object. Examples below
+
+Tarn Pooling Configuration
+
+```javascript
+const db = knex({
+  client: Db2Dialect,
+  connection: {
+    host: "localhost",
+    database: "knextest",
+    port: 50000,
+    user: "<user>",
+    password: "<password>",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: {
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+    },
+  },
+  pool: {
+    min: 2,
+    max: 10,
+  },
+});
+```
+
+Node-ODBC Pooling Configuration
+
+```javascript
+const db = knex({
+  client: Db2Dialect,
+  connection: {
+    host: "localhost",
+    database: "knextest",
+    port: 50000,
+    user: "<user>",
+    password: "<password>",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: {
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+    },
+    pool: {
+      min: 2,
+      max: 10,
+    },
+  },
+});
 ```
 
 ## Configuring your driver
