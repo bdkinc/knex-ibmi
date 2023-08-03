@@ -161,19 +161,17 @@ var ibmi_columncompiler_default = IBMiColumnCompiler;
 // src/execution/ibmi-transaction.ts
 var import_transaction = __toESM(require("knex/lib/execution/transaction"));
 var IBMiTransaction = class extends import_transaction.default {
-  async begin(conn) {
-    const connection = await conn.connect();
+  async begin(connection) {
     await connection.beginTransaction();
     return connection;
   }
-  async rollback(conn) {
-    const connection = await conn.connect();
+  async rollback(connection) {
     await connection.rollback();
     return connection;
   }
-  async commit(conn) {
-    await conn.commit();
-    return conn;
+  async commit(connection) {
+    await connection.commit();
+    return connection;
   }
 };
 var ibmi_transaction_default = IBMiTransaction;
