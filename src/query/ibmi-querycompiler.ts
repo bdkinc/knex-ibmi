@@ -1,8 +1,8 @@
+// @ts-ignore
 import QueryCompiler from "knex/lib/query/querycompiler";
 import isObject from "lodash/isObject";
 import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
 import { format } from "date-fns";
-import * as console from "console";
 import isEmpty from "lodash/isEmpty";
 
 class IBMiQueryCompiler extends QueryCompiler {

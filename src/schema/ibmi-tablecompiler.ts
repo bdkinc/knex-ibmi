@@ -1,3 +1,4 @@
+// @ts-ignore
 import TableCompiler from "knex/lib/schema/tablecompiler";
 import isObject from "lodash/isObject";
 

@@ -1,3 +1,4 @@
+// @ts-ignore
 import SchemaCompiler from "knex/lib/schema/compiler";
 
 class IBMiSchemaCompiler extends SchemaCompiler {
