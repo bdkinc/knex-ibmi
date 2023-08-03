@@ -1,6 +1,6 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "Knex dialect for IBMi",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
