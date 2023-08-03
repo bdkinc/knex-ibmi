@@ -105,6 +105,44 @@ try {
 }
 ```
 
+or as Typescript
+
+```typescript
+import knex from "knex";
+import { Db2Dialect, DB2Config } from "knex-ibmi";
+
+const config: DB2Config = {
+  client: Db2Dialect,
+  connection: {
+    host: "localhost",
+    database: "knextest",
+    port: 50000,
+    user: "<user>",
+    password: "<password>",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: {
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+    },
+  },
+  pool: {
+    min: 2,
+    max: 10,
+  },
+}
+
+const db = knex(config);
+
+try {
+  const data = await db.select("*").from("table").where({ foo: "bar" });
+  console.log(data);
+} catch (err) {
+  throw new Error(err);
+} finally {
+  process.exit();
+}
+```
+
 ## Pooling
 
 There are 2 different pooling configurations, Tarn pooling and the Node-ODBC pooling. 
