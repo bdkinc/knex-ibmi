@@ -62,14 +62,12 @@ class DB2Client extends knex.Client {
     const connectionConfig = this.config.connection;
     console.log(this._getConnectionString(connectionConfig));
 
-    console.log({ config: this.config, pool: this.pool });
-
     // @ts-ignore
     if (this.config?.connection?.pool) {
       const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
         connectionTimeout:
-        // @ts-ignore
+          // @ts-ignore
           this.config?.connection?.acquireConnectionTimeout || 60000,
         // @ts-ignore
         initialSize: this.config?.connection?.pool?.min || 2,
@@ -135,7 +133,6 @@ class DB2Client extends knex.Client {
       try {
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
-        console.log({ obj });
         if (obj.bindings) {
           await statement.bind(obj.bindings);
         }
@@ -152,35 +149,56 @@ class DB2Client extends knex.Client {
             ),
             rowCount: result.length,
           };
+          // @ts-ignore
         } else if (method === "update") {
           // if is in update we need to run a separate select query
           // this also feels hacky and should be cleaned up
           // it would be a lot easier if the table-reference function
           // worked the same for updates as it does inserts
           // on DB2 LUW it does work so if they ever add it we need to fix
-          let returningSelect = obj.sql.replace("update", "select * from ");
-          returningSelect = returningSelect.replace("where", "and");
-          returningSelect = returningSelect.replace("set", "where");
           // @ts-ignore
-          returningSelect = returningSelect.replace(this.tableName, "where");
-          const selectStatement = await connection.createStatement();
-          await selectStatement.prepare(returningSelect);
-          if (obj.bindings) {
-            await selectStatement.bind(obj.bindings);
+          if (obj.sql.includes("knex_migrations_lock")) {
+            // even more hacky for migrations
+            console.log("migrations_lock");
+            // @ts-ignore
+            const rows = await connection.query(
+              // @ts-ignore
+              `select * from \"knex_migrations_lock\"`,
+            );
+            console.log({ rows });
+            console.log(rows.map((row) => row.index));
+            obj.response = {
+              rows: rows.length,
+              rowCount: rows.length,
+            };
+          } else {
+            let returningSelect = obj.sql.replace("update", "select * from ");
+            returningSelect = returningSelect.replace("where", "and");
+            returningSelect = returningSelect.replace("set", "where");
+            // @ts-ignore
+            returningSelect = returningSelect.replace(this.tableName, "where");
+            const selectStatement = await connection.createStatement();
+            await selectStatement.prepare(returningSelect);
+            console.log({ returningSelect });
+            if (obj.bindings) {
+              await selectStatement.bind(obj.bindings);
+            }
+            const selected = await selectStatement.execute();
+            obj.response = {
+              rows: selected.map((row) =>
+                selected.columns.length > 0
+                  ? row[selected.columns[0].name]
+                  : row,
+              ),
+              rowCount: selected.length,
+            };
           }
-          const selected = await selectStatement.execute();
-          obj.response = {
-            rows: selected.map((row) =>
-              selected.columns.length > 0 ? row[selected.columns[0].name] : row,
-            ),
-            rowCount: selected.length,
-          };
         } else {
           obj.response = { rows: result, rowCount: result.length };
         }
       } catch (err: any) {
         console.error(err);
-        // await connection.rollback()
+        await connection.rollback();
         throw new Error(err);
       } finally {
         console.log("transaction committed");
@@ -188,6 +206,7 @@ class DB2Client extends knex.Client {
       }
     }
 
+    console.log({ obj });
     return obj;
   }
 
