@@ -13,7 +13,7 @@
   },
   "engineStrict": true,
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs",
+    "build": "tsup src/index.ts --dts --format esm,cjs",
     "lint:scripts": "eslint . --ext .ts",
     "format:scripts": "prettier . --write"
   },

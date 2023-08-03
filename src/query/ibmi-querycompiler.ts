@@ -152,6 +152,7 @@ class IBMiQueryCompiler extends QueryCompiler {
       i = -1;
     while (++i < columns.length) {
       if (i > 0) str += ", ";
+      // @ts-ignore
       str += prefix + this.wrap(columns[i]);
     }
     return str;

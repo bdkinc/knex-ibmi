@@ -365,8 +365,13 @@ var DB2Client = class extends import_knex.knex.Client {
     if (this.config?.connection?.pool) {
       const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
-        connectionTimeout: this.config?.connection?.acquireConnectionTimeout || 6e4,
+        connectionTimeout: (
+          // @ts-ignore
+          this.config?.connection?.acquireConnectionTimeout || 6e4
+        ),
+        // @ts-ignore
         initialSize: this.config?.connection?.pool?.min || 2,
+        // @ts-ignore
         maxSize: this.config?.connection?.pool?.max || 10,
         reuseConnection: true
       };
