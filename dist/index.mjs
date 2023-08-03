@@ -329,12 +329,12 @@ var DB2Client = class extends knex.Client {
     if (this.pool) {
       const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
-        connectionTimeout: this.config?.acquireConnectionTimeout || 6e4,
-        initialSize: this.config.pool?.min || 2,
-        maxSize: this.config.pool?.max || 10,
+        connectionTimeout: this.config.connection?.acquireConnectionTimeout || 6e4,
+        initialSize: this.config.connection?.pool?.min || 2,
+        maxSize: this.config.connection?.pool?.max || 10,
         reuseConnection: true
       };
-      console.log({ poolConfig, pool: this.pool });
+      console.log({ config: this.config, pool: this.pool, poolConfig });
       const pool = await this.driver.pool(poolConfig);
       return await pool.connect();
     }
