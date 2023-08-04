@@ -5,7 +5,7 @@
     "target": "ESNext",
     "module": "commonjs",
     "moduleResolution": "Node",
-    "types": ["node"],
+    "types": ["node", ],
     "lib": ["ESNext"],
     "allowJs": true,
     "allowSyntheticDefaultImports": true,

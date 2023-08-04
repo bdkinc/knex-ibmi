@@ -37,7 +37,7 @@ module.exports = __toCommonJS(src_exports);
 var process = __toESM(require("process"));
 var import_knex = require("knex");
 var odbc = __toESM(require("odbc"));
-var console = __toESM(require("console"));
+var console2 = __toESM(require("console"));
 
 // src/schema/ibmi-compiler.ts
 var import_compiler = __toESM(require("knex/lib/schema/compiler"));
@@ -182,6 +182,7 @@ var import_isObject2 = __toESM(require("lodash/isObject"));
 var import_wrappingFormatter = require("knex/lib/formatter/wrappingFormatter");
 var import_date_fns = require("date-fns");
 var import_isEmpty = __toESM(require("lodash/isEmpty"));
+var console = __toESM(require("console"));
 var IBMiQueryCompiler = class extends import_querycompiler.default {
   insert() {
     const insertValues = this.single.insert || [];
@@ -285,7 +286,51 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
       values
     };
   }
+  update() {
+    const withSQL = this.with();
+    const updates = this._prepUpdate(this.single.update);
+    const where = this.where();
+    const order = this.order();
+    const limit = this.limit();
+    const { returning } = this.single;
+    const values = Object.values(this.single.update).map((a) => `${a}`).join(", ");
+    console.log({
+      returning,
+      // @ts-ignore
+      where,
+      // @ts-ignore
+      updates,
+      // @ts-ignore
+      single: this.single.update,
+      // @ts-ignore
+      grouped: this.grouped.where,
+      values
+    });
+    const moreWheres = (
+      // @ts-ignore
+      this.grouped.where && this.grouped.where.length > 0 ? (
+        // @ts-ignore
+        this.grouped.where.map((w) => {
+          if (this.single.update.hasOwnProperty(w.column))
+            return;
+          if (!w.value)
+            return;
+          return `"${w.column}" ${w.not ? "!" : ""}${w.operator} ${w.value}`;
+        })
+      ) : []
+    );
+    let selectReturning = returning ? `select ${returning.map((a) => `"${a}"`).join(", ")} from ${// @ts-ignore
+    this.tableName} where ${Object.entries(this.single.update).map(([key, value]) => `"${key}" = '${value}'`).join(" and ")}${moreWheres.length > 0 && " and "}${moreWheres.join(
+      " and "
+    )}` : "";
+    console.log({ selectReturning });
+    const sql = withSQL + // @ts-ignore
+    `update ${this.single.only ? "only " : ""}${this.tableName} set ` + // @ts-ignore
+    updates.join(", ") + (where ? ` ${where}` : "") + (order ? ` ${order}` : "") + (limit ? ` ${limit}` : "");
+    return { sql, returning, selectReturning };
+  }
   _returning(method, value, withTrigger) {
+    console.log("_returning", value);
     switch (method) {
       case "update":
       case "insert":
@@ -299,7 +344,7 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
           `${withTrigger ? " into #out" : ""}`
         ) : "";
       case "rowcount":
-        return value ? ";select @@rowcount" : "";
+        return value ? "select @@rowcount" : "";
     }
   }
   columnizeWithPrefix(prefix, target) {
@@ -358,7 +403,7 @@ var DB2Client = class extends import_knex.knex.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    console.log(this._getConnectionString(connectionConfig));
+    console2.log(this._getConnectionString(connectionConfig));
     if (this.config?.connection?.pool) {
       const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
@@ -382,7 +427,7 @@ var DB2Client = class extends import_knex.knex.Client {
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection) {
-    console.log("destroy connection");
+    console2.log("destroy connection");
     return await connection.close();
   }
   _getConnectionString(connectionConfig) {
@@ -409,7 +454,7 @@ var DB2Client = class extends import_knex.knex.Client {
       }
     } else {
       await connection.beginTransaction();
-      console.log("transaction begun");
+      console2.log("transaction begun");
       try {
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
@@ -420,69 +465,37 @@ var DB2Client = class extends import_knex.knex.Client {
         if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
           obj.response = {
             rows: result.map(
-              (row) => result.columns.length > 0 ? row[result.columns[0].name] : row
+              (row) => result.columns && result.columns?.length > 0 ? row[result.columns[0].name] : row
             ),
-            rowCount: result.length
+            rowCount: result.count
           };
         } else if (method === "update") {
-          if (obj.sql.includes("knex_migrations_lock")) {
-            console.log("migrations_lock");
-            const rows = await connection.query(
-              // @ts-ignore
-              `select * from "knex_migrations_lock"`
-            );
-            console.log({ rows });
-            console.log(rows.map((row) => row.index));
+          if (obj.selectReturning) {
+            const returningSelect = await connection.query(obj.selectReturning);
             obj.response = {
-              rows: rows.length,
-              rowCount: rows.length
+              rows: returningSelect,
+              rowCount: result.count
             };
           } else {
-            let returningSelect = obj.sql.replace("update", "select * from ");
-            returningSelect = returningSelect.replace("where", "and");
-            returningSelect = returningSelect.replace("set", "where");
-            returningSelect = returningSelect.replace(this.tableName, "where");
-            const selectStatement = await connection.createStatement();
-            await selectStatement.prepare(returningSelect);
-            console.log({ returningSelect });
-            if (obj.bindings) {
-              await selectStatement.bind(obj.bindings);
-            }
-            const selected = await selectStatement.execute();
             obj.response = {
-              rows: selected.map(
-                (row) => selected.columns.length > 0 ? row[selected.columns[0].name] : row
-              ),
-              rowCount: selected.length
+              rows: result,
+              rowCount: result.count
             };
           }
         } else {
-          obj.response = { rows: result, rowCount: result.length };
+          obj.response = { rows: result, rowCount: result.count };
         }
       } catch (err) {
-        console.error(err);
+        console2.error(err);
         await connection.rollback();
         throw new Error(err);
       } finally {
-        console.log("transaction committed");
+        console2.log("transaction committed");
         await connection.commit();
       }
     }
-    console.log({ obj });
+    console2.log({ obj });
     return obj;
-  }
-  _selectAfterUpdate() {
-    const returnSelect = `; SELECT ${// @ts-ignore
-    this.single.returning ? (
-      // @ts-ignore
-      this.formatter.columnize(this.single.returning)
-    ) : "*"} from ${this.tableName} `;
-    let whereStatement = [this.where()];
-    console.log({ whereStatement });
-    for (const [key, value] of Object.entries(this.single.update)) {
-      whereStatement.push(`WHERE ${key} = ${value}`);
-    }
-    return returnSelect + whereStatement.join(" and ");
   }
   transaction(container, config, outerTx) {
     return new ibmi_transaction_default(this, ...arguments);
@@ -504,7 +517,7 @@ var DB2Client = class extends import_knex.knex.Client {
       return null;
     const resp = obj.response;
     const method = obj.sqlMethod;
-    const { rows } = resp;
+    const { rows, rowCount } = resp;
     if (obj.output)
       return obj.output.call(runner, resp);
     switch (method) {
@@ -519,11 +532,14 @@ var DB2Client = class extends import_knex.knex.Client {
       case "del":
       case "delete":
       case "update":
-        return rows;
+        if (obj.selectReturning) {
+          return rows;
+        }
+        return rowCount;
       case "counter":
-        return resp.rowCount;
+        return rowCount;
       default:
-        return resp;
+        return rows;
     }
   }
 };

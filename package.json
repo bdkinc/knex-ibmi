@@ -1,6 +1,6 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "description": "Knex dialect for IBMi",
   "main": "dist/index",
   "types": "dist/index",
@@ -15,6 +15,7 @@
   "engineStrict": true,
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm,cjs",
+    "build:dev": "tsup src/index.ts --format esm,cjs",
     "lint:scripts": "eslint . --ext .ts",
     "format:scripts": "prettier . --write"
   },
