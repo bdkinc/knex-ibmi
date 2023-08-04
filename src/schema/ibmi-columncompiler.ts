@@ -1,3 +1,4 @@
+// @ts-ignore
 import ColumnCompiler from "knex/lib/schema/columncompiler";
 
 class IBMiColumnCompiler extends ColumnCompiler {

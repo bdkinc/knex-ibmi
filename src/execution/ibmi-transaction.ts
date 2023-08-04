@@ -1,3 +1,4 @@
+// @ts-ignore
 import Transaction from "knex/lib/execution/transaction";
 
 class IBMiTransaction extends Transaction {
