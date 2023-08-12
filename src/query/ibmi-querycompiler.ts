@@ -4,6 +4,7 @@ import isObject from "lodash/isObject";
 import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
 import { format } from "date-fns";
 import isEmpty from "lodash/isEmpty";
+import * as console from "console";
 
 class IBMiQueryCompiler extends QueryCompiler {
   insert() {
@@ -127,8 +128,81 @@ class IBMiQueryCompiler extends QueryCompiler {
     };
   }
 
+  update() {
+    // @ts-ignore
+    const withSQL = this.with();
+    // @ts-ignore
+    const updates = this._prepUpdate(this.single.update);
+    // @ts-ignore
+    const where = this.where();
+    // @ts-ignore
+    const order = this.order();
+    // @ts-ignore
+    const limit = this.limit();
+    // @ts-ignore
+    const { returning } = this.single;
+    // @ts-ignore
+    const values = Object.values(this.single.update)
+      .map((a) => `${a}`)
+      .join(", ");
+
+    // @ts-ignore
+    console.log({
+      returning,
+      // @ts-ignore
+      where,
+      // @ts-ignore
+      updates,
+      // @ts-ignore
+      single: this.single.update,
+      // @ts-ignore
+      grouped: this.grouped.where,
+      values,
+    });
+    // @ts-ignore
+    const moreWheres =
+      // @ts-ignore
+      this.grouped.where && this.grouped.where.length > 0
+        ? // @ts-ignore
+          this.grouped.where.map((w) => {
+            // @ts-ignore
+            if (this.single.update.hasOwnProperty(w.column)) return;
+            if (!w.value) return;
+            return `"${w.column}" ${w.not ? "!" : ""}${w.operator} ${w.value}`;
+          })
+        : [];
+
+    let selectReturning = returning
+      ? `select ${returning.map((a) => `"${a}"`).join(", ")} from ${
+          // @ts-ignore
+          this.tableName
+          // @ts-ignore
+        } where ${Object.entries(this.single.update)
+          .map(([key, value]) => `"${key}" = '${value}'`)
+          .join(" and ")}${moreWheres.length > 0 && " and "}${moreWheres.join(
+          " and ",
+        )}`
+      : "";
+
+    console.log({ selectReturning });
+
+    const sql =
+      withSQL +
+      // @ts-ignore
+      `update ${this.single.only ? "only " : ""}${this.tableName}` +
+      " set " +
+      // @ts-ignore
+      updates.join(", ") +
+      (where ? ` ${where}` : "") +
+      (order ? ` ${order}` : "") +
+      (limit ? ` ${limit}` : "");
+
+    return { sql, returning, selectReturning };
+  }
+
   _returning(method, value, withTrigger) {
     // currently a placeholder in case I need to update return values
+    console.log("_returning", value);
     switch (method) {
       case "update":
       case "insert":
@@ -142,7 +216,7 @@ class IBMiQueryCompiler extends QueryCompiler {
             `${withTrigger ? " into #out" : ""}`
           : "";
       case "rowcount":
-        return value ? ";select @@rowcount" : "";
+        return value ? "select @@rowcount" : "";
     }
   }
 

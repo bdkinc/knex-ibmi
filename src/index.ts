@@ -145,56 +145,27 @@ class DB2Client extends knex.Client {
         if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
           obj.response = {
             rows: result.map((row) =>
-              result.columns.length > 0 ? row[result.columns[0].name] : row,
+              result.columns && result.columns?.length > 0
+                ? row[result.columns[0].name]
+                : row,
             ),
-            rowCount: result.length,
+            rowCount: result.count,
           };
-          // @ts-ignore
         } else if (method === "update") {
-          // if is in update we need to run a separate select query
-          // this also feels hacky and should be cleaned up
-          // it would be a lot easier if the table-reference function
-          // worked the same for updates as it does inserts
-          // on DB2 LUW it does work so if they ever add it we need to fix
-          // @ts-ignore
-          if (obj.sql.includes("knex_migrations_lock")) {
-            // even more hacky for migrations
-            console.log("migrations_lock");
-            // @ts-ignore
-            const rows = await connection.query(
-              // @ts-ignore
-              `select * from \"knex_migrations_lock\"`,
-            );
-            console.log({ rows });
-            console.log(rows.map((row) => row.index));
+          if (obj.selectReturning) {
+            const returningSelect = await connection.query(obj.selectReturning);
             obj.response = {
-              rows: rows.length,
-              rowCount: rows.length,
+              rows: returningSelect,
+              rowCount: result.count,
             };
           } else {
-            let returningSelect = obj.sql.replace("update", "select * from ");
-            returningSelect = returningSelect.replace("where", "and");
-            returningSelect = returningSelect.replace("set", "where");
-            // @ts-ignore
-            returningSelect = returningSelect.replace(this.tableName, "where");
-            const selectStatement = await connection.createStatement();
-            await selectStatement.prepare(returningSelect);
-            console.log({ returningSelect });
-            if (obj.bindings) {
-              await selectStatement.bind(obj.bindings);
-            }
-            const selected = await selectStatement.execute();
             obj.response = {
-              rows: selected.map((row) =>
-                selected.columns.length > 0
-                  ? row[selected.columns[0].name]
-                  : row,
-              ),
-              rowCount: selected.length,
+              rows: result,
+              rowCount: result.count,
             };
           }
         } else {
-          obj.response = { rows: result, rowCount: result.length };
+          obj.response = { rows: result, rowCount: result.count };
         }
       } catch (err: any) {
         console.error(err);
@@ -208,25 +179,6 @@ class DB2Client extends knex.Client {
 
     console.log({ obj });
     return obj;
-  }
-
-  _selectAfterUpdate() {
-    const returnSelect = `; SELECT ${
-      // @ts-ignore
-      this.single.returning
-        ? // @ts-ignore
-          this.formatter.columnize(this.single.returning)
-        : "*"
-      // @ts-ignore
-    } from ${this.tableName} `;
-    // @ts-ignore
-    let whereStatement = [this.where()];
-    console.log({ whereStatement });
-    // @ts-ignore
-    for (const [key, value] of Object.entries(this.single.update)) {
-      whereStatement.push(`WHERE ${key} = ${value}`);
-    }
-    return returnSelect + whereStatement.join(" and ");
   }
 
   transaction(container: any, config: any, outerTx: any): Knex.Transaction {
@@ -259,7 +211,7 @@ class DB2Client extends knex.Client {
 
     const resp = obj.response;
     const method = obj.sqlMethod;
-    const { rows } = resp;
+    const { rows, rowCount } = resp;
 
     if (obj.output) return obj.output.call(runner, resp);
 
@@ -275,11 +227,14 @@ class DB2Client extends knex.Client {
       case "del":
       case "delete":
       case "update":
-        return rows;
+        if (obj.selectReturning) {
+          return rows;
+        }
+        return rowCount;
       case "counter":
-        return resp.rowCount;
+        return rowCount;
       default:
-        return resp;
+        return rows;
     }
   }
 }
