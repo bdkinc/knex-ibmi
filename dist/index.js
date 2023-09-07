@@ -52,9 +52,9 @@ var IBMiSchemaCompiler = class extends import_compiler.default {
       this.bindingsHolder
     );
     const bindings = [tableName];
-    let sql = `SELECT TABLE_NAME FROM QSYS2.SYSTABLES WHERE TYPE = 'T' AND TABLE_NAME = ${formattedTable}`;
+    let sql = `SELECT TABLE_NAME FROM QSYS2.SYSTABLES where TYPE = 'T' and TABLE_NAME = ${formattedTable}`;
     if (this.schema) {
-      sql += " AND TABLE_SCHEMA = ?";
+      sql += " and TABLE_SCHEMA = ?";
       bindings.push(this.schema);
     }
     this.pushQuery({
@@ -122,7 +122,7 @@ var IBMiTableCompiler = class extends import_tablecompiler.default {
     const predicateQuery = predicate ? " " + this.client.queryCompiler(predicate).where() : "";
     this.pushQuery(
       // @ts-ignore
-      `CREATE UNIQUE INDEX ${indexName} ON ${this.tableName()} (${columns})${predicateQuery}`
+      `create unique index ${indexName} on ${this.tableName()} (${columns})${predicateQuery}`
     );
   }
   // All of the columns to "add" for the query
@@ -142,7 +142,7 @@ var IBMiTableCompiler = class extends import_tablecompiler.default {
       });
     }
   }
-  async commit(conn, value) {
+  async commit(conn) {
     return await conn.commit();
   }
 };
