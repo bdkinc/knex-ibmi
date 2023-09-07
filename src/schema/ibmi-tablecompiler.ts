@@ -79,7 +79,7 @@ class IBMiTableCompiler extends TableCompiler {
     // @ts-ignore
     this.pushQuery(
       // @ts-ignore
-      `CREATE UNIQUE INDEX ${indexName} ON ${this.tableName()} (${columns})${predicateQuery}`
+      `create unique index ${indexName} on ${this.tableName()} (${columns})${predicateQuery}`
     );
   }
 
@@ -106,7 +106,7 @@ class IBMiTableCompiler extends TableCompiler {
     }
   }
 
-  async commit(conn, value) {
+  async commit(conn) {
     return await conn.commit();
   }
 }
