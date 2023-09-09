@@ -1,11 +1,8 @@
 {
   "compilerOptions": {
     "outDir": "./dist",
-    "target": "es2019",
+    "target": "ESNext",
     "module": "commonjs",
-    "moduleResolution": "Node",
-    "types": ["node"],
-    "lib": ["ESNext"],
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
     "useDefineForClassFields": true,
