@@ -110,7 +110,6 @@ or as Typescript
 import { knex } from "knex";
 import { Db2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 
-type DB2Config = typeof DB2Config;
 
 const config: DB2Config = {
   client: Db2Dialect,
