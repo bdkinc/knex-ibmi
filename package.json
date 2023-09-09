@@ -1,21 +1,14 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "description": "Knex dialect for IBMi",
-  "main": "dist/index",
-  "types": "dist/index",
-  "module": "dist/index.mjs",
-  "exports": {
-    "import": "./dist/index.mjs",
-    "require": "./dist/index.js"
-  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "engines": {
     "node": ">=14"
   },
-  "engineStrict": true,
   "scripts": {
-    "build": "tsup src/index.ts --dts --format esm,cjs",
-    "build:dev": "tsup src/index.ts --format esm,cjs",
+    "build": "tsc",
     "lint:scripts": "eslint . --ext .ts",
     "format:scripts": "prettier . --write"
   },
