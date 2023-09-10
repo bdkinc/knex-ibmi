@@ -63,16 +63,16 @@ class DB2Client extends knex.Client {
     console.log("knex-ibmi: ", this._getConnectionString(connectionConfig));
 
     // @ts-ignore
-    if (this.config?.connection?.pool) {
+    if (this.config?.pool) {
       const poolConfig = {
         connectionString: this._getConnectionString(connectionConfig),
         connectionTimeout:
           // @ts-ignore
-          this.config?.connection?.acquireConnectionTimeout || 60000,
+          this.config?.acquireConnectionTimeout || 60000,
         // @ts-ignore
-        initialSize: this.config?.connection?.pool?.min || 2,
+        initialSize: this.config?.pool?.min || 2,
         // @ts-ignore
-        maxSize: this.config?.connection?.pool?.max || 10,
+        maxSize: this.config?.pool?.max || 10,
         reuseConnection: true,
       };
       const pool = await this.driver.pool(poolConfig);
@@ -244,8 +244,9 @@ class DB2Client extends knex.Client {
 }
 
 interface DB2PoolConfig {
-  min: number;
-  max: number;
+  min?: number;
+  max?: number;
+  acquireConnectionTimeout?: number;
 }
 
 interface DB2ConnectionParams {
@@ -272,7 +273,6 @@ interface DB2ConnectionConfig {
   password: string;
   driver: "IBM i Access ODBC Driver" | string;
   connectionStringParams?: DB2ConnectionParams;
-  pool?: DB2PoolConfig;
 }
 
 export interface DB2Config {
