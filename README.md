@@ -110,7 +110,6 @@ or as Typescript
 import { knex } from "knex";
 import { Db2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 
-
 const config: DB2Config = {
   client: Db2Dialect,
   connection: {
@@ -129,7 +128,7 @@ const config: DB2Config = {
     min: 2,
     max: 10,
   },
-}
+};
 
 const db = knex(config);
 
@@ -144,10 +143,6 @@ try {
 ```
 
 ## Pooling
-
-There are 2 different pooling configurations, Tarn pooling and the Node-ODBC pooling. 
-Where the pool property is positioned dictates which pooling is used. To use node-odbc pooling the pool object needs to 
-be a property inside the connection object. Examples below
 
 Tarn Pooling Configuration
 
@@ -169,30 +164,7 @@ const db = knex({
   pool: {
     min: 2,
     max: 10,
-  },
-});
-```
-
-Node-ODBC Pooling Configuration
-
-```javascript
-const db = knex({
-  client: Db2Dialect,
-  connection: {
-    host: "localhost",
-    database: "knextest",
-    port: 50000,
-    user: "<user>",
-    password: "<password>",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-    },
-    pool: {
-      min: 2,
-      max: 10,
-    },
+    acquireConnectionTimeout: 6000,
   },
 });
 ```
