@@ -147,19 +147,6 @@ class IBMiQueryCompiler extends QueryCompiler {
       .join(", ");
 
     // @ts-ignore
-    console.log({
-      returning,
-      // @ts-ignore
-      where,
-      // @ts-ignore
-      updates,
-      // @ts-ignore
-      single: this.single.update,
-      // @ts-ignore
-      grouped: this.grouped.where,
-      values,
-    });
-    // @ts-ignore
     const moreWheres =
       // @ts-ignore
       this.grouped.where && this.grouped.where.length > 0

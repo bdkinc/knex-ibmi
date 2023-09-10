@@ -60,7 +60,7 @@ class DB2Client extends knex.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    console.log(this._getConnectionString(connectionConfig));
+    console.log("knex-ibmi: ", this._getConnectionString(connectionConfig));
 
     // @ts-ignore
     if (this.config?.connection?.pool) {
@@ -87,7 +87,7 @@ class DB2Client extends knex.Client {
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection: Connection) {
-    console.log("destroy connection");
+    console.log("knex-ibmi: ", "destroy connection");
     return await connection.close();
   }
 
@@ -129,7 +129,7 @@ class DB2Client extends knex.Client {
       }
     } else {
       await connection.beginTransaction();
-      console.log("transaction begun");
+      console.log("knex-ibmi: ", "transaction begun");
       try {
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
@@ -172,7 +172,7 @@ class DB2Client extends knex.Client {
         await connection.rollback();
         throw new Error(err);
       } finally {
-        console.log("transaction committed");
+        console.log("knex-ibmi: ", "transaction committed");
         await connection.commit();
       }
     }
