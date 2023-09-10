@@ -184,8 +184,6 @@ class IBMiQueryCompiler extends QueryCompiler {
         )}`
       : "";
 
-    console.log({ selectReturning });
-
     const sql =
       withSQL +
       // @ts-ignore
@@ -202,7 +200,6 @@ class IBMiQueryCompiler extends QueryCompiler {
 
   _returning(method, value, withTrigger) {
     // currently a placeholder in case I need to update return values
-    console.log("_returning", value);
     switch (method) {
       case "update":
       case "insert":
