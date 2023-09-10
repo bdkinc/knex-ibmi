@@ -177,7 +177,11 @@ class DB2Client extends knex.Client {
       }
     }
 
-    console.log({ obj });
+    console.log(
+      "knex-ibmi: ",
+      obj.sql,
+      obj.bindings ? JSON.stringify(obj.bindings) : "",
+    );
     return obj;
   }
 
