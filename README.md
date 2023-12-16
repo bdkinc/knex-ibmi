@@ -1,6 +1,6 @@
 [![npm version](http://img.shields.io/npm/v/@bdkinc/knex-ibmi.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
 
-**Disclaimer: this library is in alpha. Please submit an issue for any bugs encounter or any questions you have.**
+**Disclaimer: this library is in beta. Please submit an issue for any bugs encounter or any questions you have.**
 
 ## Description
 
@@ -72,10 +72,10 @@ or as ESM
 
 ```javascript
 import knex from "knex";
-import { Db2Dialect } from "@bdkinc/knex-ibmi";
+import { DB2Dialect } from "@bdkinc/knex-ibmi";
 
 const db = knex({
-  client: Db2Dialect,
+  client: DB2Dialect,
   connection: {
     host: "localhost",
     database: "knextest",
@@ -108,10 +108,10 @@ or as Typescript
 
 ```typescript
 import { knex } from "knex";
-import { Db2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
+import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 
 const config: DB2Config = {
-  client: Db2Dialect,
+  client: DB2Dialect,
   connection: {
     host: "localhost",
     database: "knextest",
@@ -148,7 +148,7 @@ Tarn Pooling Configuration
 
 ```javascript
 const db = knex({
-  client: Db2Dialect,
+  client: DB2Dialect,
   connection: {
     host: "localhost",
     database: "knextest",
