@@ -1,6 +1,6 @@
 [![npm version](http://img.shields.io/npm/v/@bdkinc/knex-ibmi.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
 
-**Disclaimer: this library is in beta. Please submit an issue for any bugs encounter or any questions you have.**
+**Disclaimer: This library is in beta. Please submit an issue for any bugs encounter or any questions you have.**
 
 ## Description
 
@@ -38,10 +38,10 @@ This library is written in typescript and compiled to both commonjs and esm.
 
 ```javascript
 const knex = require("knex");
-const { Db2Dialect } = require("@bdkinc/knex-ibmi");
+const { DB2Dialect } = require("@bdkinc/knex-ibmi");
 
 const db = knex({
-  client: Db2Dialect,
+  client: DB2Dialect,
   connection: {
     host: "localhost",
     database: "knextest",
