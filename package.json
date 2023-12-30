@@ -1,6 +1,6 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.0.35",
+  "version": "0.1.0",
   "description": "Knex dialect for IBMi",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -35,23 +35,23 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@faker-js/faker": "^8.0.2",
+    "@faker-js/faker": "^8.3.1",
     "@types/knex": "^0.16.1",
-    "@typescript-eslint/eslint-plugin": "^5.61.0",
-    "@typescript-eslint/parser": "^5.61.0",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
     "debug": "^4.3.4",
-    "eslint": "^8.44.0",
-    "eslint-config-prettier": "^8.8.0",
-    "eslint-plugin-prettier": "^4.2.1",
-    "prettier": "^3.0.0",
-    "ts-node": "^10.9.1",
-    "tslib": "^2.6.0",
-    "tsup": "^7.1.0",
-    "typescript": "^5.1.6"
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "prettier": "^3.1.1",
+    "ts-node": "^10.9.2",
+    "tslib": "^2.6.2",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3"
   },
   "dependencies": {
     "date-fns": "^2.30.0",
-    "knex": "^2",
+    "knex": "^3",
     "lodash": "^4.17.21",
     "odbc": "^2.4.8"
   }

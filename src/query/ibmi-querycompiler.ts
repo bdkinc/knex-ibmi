@@ -15,13 +15,13 @@ class IBMiQueryCompiler extends QueryCompiler {
     // we use the "IDENTITY_VAL_LOCAL()" function to return the IDENTITY
     // unless specified in a return
     // @ts-ignore
-    let sql = `SELECT ${
+    let sql = `select ${
       // @ts-ignore
       this.single.returning
         ? // @ts-ignore
           this.formatter.columnize(this.single.returning)
         : "IDENTITY_VAL_LOCAL()"
-    } FROM FINAL TABLE(`;
+    } from FINAL TABLE(`;
     // @ts-ignore
     sql += this.with() + `insert into ${this.tableName} `;
     // @ts-ignore

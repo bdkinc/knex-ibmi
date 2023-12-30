@@ -12,10 +12,10 @@ class IBMiTableCompiler extends TableCompiler {
     if (like) {
       // This query copy only columns and not all indexes and keys like other databases.
       // @ts-ignore
-      createStatement += `SELECT * INTO ${this.tableName()} FROM ${this.tableNameLike()} WHERE 0=1`;
+      createStatement += `select * into ${this.tableName()} from ${this.tableNameLike()} WHERE 0=1`;
     } else {
       createStatement +=
-        "CREATE TABLE " +
+        "create table " +
         // @ts-ignore
         this.tableName() +
         // @ts-ignore

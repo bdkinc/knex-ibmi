@@ -2,7 +2,6 @@ import * as process from "process";
 import { Connection } from "odbc";
 import { knex, Knex } from "knex";
 import * as odbc from "odbc";
-import * as console from "console";
 import SchemaCompiler from "./schema/ibmi-compiler";
 import TableCompiler from "./schema/ibmi-tablecompiler";
 import ColumnCompiler from "./schema/ibmi-columncompiler";
@@ -51,7 +50,7 @@ class DB2Client extends knex.Client {
   printDebug(message: string) {
     if (process.env.DEBUG === "true") {
       // @ts-ignore
-      this.logger.debug(message);
+      this.logger.debug("knex-ibmi: " + message);
     }
   }
 
@@ -60,7 +59,7 @@ class DB2Client extends knex.Client {
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
-    console.log("knex-ibmi: ", this._getConnectionString(connectionConfig));
+    this.printDebug(this._getConnectionString(connectionConfig));
 
     // @ts-ignore
     if (this.config?.pool) {
@@ -87,7 +86,7 @@ class DB2Client extends knex.Client {
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection: Connection) {
-    console.log("knex-ibmi: ", "destroy connection");
+    this.printDebug("destroy connection");
     return await connection.close();
   }
 
@@ -129,7 +128,7 @@ class DB2Client extends knex.Client {
       }
     } else {
       await connection.beginTransaction();
-      console.log("knex-ibmi: ", "transaction begun");
+      this.printDebug("transaction begun");
       try {
         const statement = await connection.createStatement();
         await statement.prepare(obj.sql);
@@ -168,20 +167,16 @@ class DB2Client extends knex.Client {
           obj.response = { rows: result, rowCount: result.count };
         }
       } catch (err: any) {
-        console.error(err);
+        this.printDebug(err);
         await connection.rollback();
         throw new Error(err);
       } finally {
-        console.log("knex-ibmi: ", "transaction committed");
+        this.printDebug("transaction committed");
         await connection.commit();
       }
     }
 
-    console.log(
-      "knex-ibmi: ",
-      obj.sql,
-      obj.bindings ? JSON.stringify(obj.bindings) : "",
-    );
+    this.printDebug(obj.sql + obj.bindings ? JSON.stringify(obj.bindings) : "");
     return obj;
   }
 
