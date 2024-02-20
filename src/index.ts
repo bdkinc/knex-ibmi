@@ -258,6 +258,7 @@ interface DB2ConnectionParams {
   DECFLOATERROROPTION?: 0 | 1;
   DECFLOATROUNDMODE?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   MAPDECIMALFLOATDESCRIBE?: 1 | 3;
+  ALLOWPROCCALLS: 0 | 1;
 }
 
 interface DB2ConnectionConfig {
