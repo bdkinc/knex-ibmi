@@ -1,21 +1,21 @@
 # TODO: Run tests against database instance. DB2 is currently not supported by TravisCI out of the box
+# Best thing to do would be to use a docker container for the database and run the tests against that.
 
 language: node_js
-dist: trusty
+dist: focal
 sudo: required
 
 cache:
   directories:
-  - "node_modules"
+    - "node_modules"
 
 matrix:
   fast_finish: true
   include:
-  - node_js: "12"
-  - node_js: "11"
-  - node_js: "10"
-  - node_js: "8"
-  - node_js: "6"
+    - node_js: "20"
+    - node_js: "18"
+    - node_js: "16"
+    - node_js: "14"
 install:
   - npm i
 

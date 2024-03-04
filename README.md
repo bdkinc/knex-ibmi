@@ -1,4 +1,17 @@
-[![npm version](http://img.shields.io/npm/v/@bdkinc/knex-ibmi.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
+# IBM DB2 Knex Dialect
+
+This project is a fork from [knex-ibmi][] to focus on the IBM DB2 Dialect. This project is a work in progress and is 
+not yet ready for production use. In theory, I haven't broken anything that worked in the previous module, however, 
+since my main focus is on cleaning up the code base and getting the unit tests running again, I can't promise I didn't 
+accidentally break something.
+
+Additionally, I plan to move on from the `odbc` package to the `ibm_db` package. This will bring the project in line 
+with the current recommended driver for IBM DB2 on Node.js. As this is intended to allow for use of knex with IBM DB2, 
+as a replacement for using the `ibm_db` package directly, I feel it is important to use the recommended driver.
+
+This work is currently being done as an exploratory project with my currently employer, and may be dropped at any time.
+
+---
 
 **Disclaimer: This library is in beta. Please submit an issue for any bugs encounter or any questions you have.**
 
@@ -196,3 +209,8 @@ UsageCount=1
 
 If that still doesn't work, then unixodbc is probably looking for the config files in the wrong directory. A common case is that the configs are in `/etc` but your system expects them to be somewhere else. In such case, override the path unixodbc looks in via the `ODBCSYSINI` and `ODBCINI` environment variables.
 E.g., `ODBCINI=/etc ODBCSYSINI=/etc`.
+
+
+<!-- Links -->
+
+[knex-ibmi]: https://github.com/bdkinc/knex-ibmi

@@ -47,6 +47,20 @@ class DB2Client extends knex.Client {
     return odbc;
   }
 
+  wrapIdentifierImpl(value) {
+    if (value === '*') return value;
+
+    let arrayAccessor = '';
+    const arrayAccessorMatch = value.match(/(.*?)(\[[0-9]+\])/);
+
+    if (arrayAccessorMatch) {
+      value = arrayAccessorMatch[1];
+      arrayAccessor = arrayAccessorMatch[2];
+    }
+
+    return `"${value.replace(/"/g, '""')}"${arrayAccessor}`;
+  }
+
   printDebug(message: string) {
     if (process.env.DEBUG === "true") {
       // @ts-ignore

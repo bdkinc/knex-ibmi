@@ -5,8 +5,8 @@ import isObject from "lodash/isObject";
 class IBMiTableCompiler extends TableCompiler {
   createQuery(columns, ifNot, like) {
     let createStatement = ifNot
-      // @ts-ignore
-      ? `if object_id('${this.tableName()}', 'U') is null `
+      ? // @ts-ignore
+        `if object_id('${this.tableName()}', 'U') is null `
       : "";
 
     if (like) {
@@ -43,10 +43,10 @@ class IBMiTableCompiler extends TableCompiler {
 
   dropUnique(columns, indexName) {
     indexName = indexName
-      // @ts-ignore
-      ? this.formatter.wrap(indexName)
-      // @ts-ignore
-      : this._indexCommand('unique', this.tableNameRaw, columns);
+      ? // @ts-ignore
+        this.formatter.wrap(indexName)
+      : // @ts-ignore
+        this._indexCommand("unique", this.tableNameRaw, columns);
     // @ts-ignore
     this.pushQuery(`drop index ${indexName}`);
   }
@@ -57,29 +57,29 @@ class IBMiTableCompiler extends TableCompiler {
     if (isObject(indexName)) {
       ({ indexName, deferrable, predicate } = indexName);
     }
-    if (deferrable && deferrable !== 'not deferrable') {
+    if (deferrable && deferrable !== "not deferrable") {
       // @ts-ignore
       this.client.logger.warn(
-        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`
+        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`,
       );
     }
     indexName = indexName
-      // @ts-ignore
-      ? this.formatter.wrap(indexName)
-      // @ts-ignore
-      : this._indexCommand('unique', this.tableNameRaw, columns);
+      ? // @ts-ignore
+        this.formatter.wrap(indexName)
+      : // @ts-ignore
+        this._indexCommand("unique", this.tableNameRaw, columns);
     // @ts-ignore
     columns = this.formatter.columnize(columns);
 
     const predicateQuery = predicate
-      // @ts-ignore
-      ? ' ' + this.client.queryCompiler(predicate).where()
-      : '';
+      ? // @ts-ignore
+        " " + this.client.queryCompiler(predicate).where()
+      : "";
 
     // @ts-ignore
     this.pushQuery(
       // @ts-ignore
-      `create unique index ${indexName} on ${this.tableName()} (${columns})${predicateQuery}`
+      `create unique index ${indexName} on ${this.tableName()} (${columns})${predicateQuery}`,
     );
   }
 
@@ -96,11 +96,11 @@ class IBMiTableCompiler extends TableCompiler {
       this.pushQuery({
         sql:
           // @ts-ignore
-          (this.lowerCase ? 'alter table ' : 'ALTER TABLE ') +
+          (this.lowerCase ? "alter table " : "ALTER TABLE ") +
           // @ts-ignore
           this.tableName() +
-          ' ' +
-          columnSql.join(' '),
+          " " +
+          columnSql.join(" "),
         bindings: columns.bindings,
       });
     }
@@ -111,4 +111,4 @@ class IBMiTableCompiler extends TableCompiler {
   }
 }
 
-export default IBMiTableCompiler
+export default IBMiTableCompiler;

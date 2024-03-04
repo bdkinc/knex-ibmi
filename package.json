@@ -1,7 +1,7 @@
 {
-  "name": "@bdkinc/knex-ibmi",
-  "version": "0.1.2",
-  "description": "Knex dialect for IBMi",
+  "name": "@morgul/knex-db2",
+  "version": "0.2.0",
+  "description": "Knex dialect for IBM DB2",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -13,6 +13,9 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --dts",
+    "test": "mocha test/unit && mocha --recursive test/integration",
+    "test-min-knex": "npm i knex@0.15.2 && npm test",
+    "test-latest-knex": "npm i knex@* && npm test",
     "lint:scripts": "eslint . --ext .ts",
     "format:scripts": "prettier . --write"
   },
@@ -36,14 +39,19 @@
   "license": "MIT",
   "devDependencies": {
     "@faker-js/faker": "^8.3.1",
+    "@types/chai": "^4.3.12",
     "@types/knex": "^0.16.1",
+    "@types/mocha": "^10.0.6",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
+    "chai": "^4.4.1",
     "debug": "^4.3.4",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.0.1",
+    "mocha": "^10.3.0",
     "prettier": "^3.1.1",
+    "ts-mocha": "^10.0.0",
     "ts-node": "^10.9.2",
     "tslib": "^2.6.2",
     "tsup": "^8.0.1",
