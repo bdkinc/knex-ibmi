@@ -6,10 +6,18 @@ import SchemaCompiler from 'knex/lib/schema/compiler';
 
 //----------------------------------------------------------------------------------------------------------------------
 
+function prefixedTableName(prefix, table) : string
+{
+    return prefix ? `${ prefix }.${ table }` : table;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
 class DB2SchemaCompiler extends SchemaCompiler
 {
-    hasTable(tableName)
+    hasTable(tableName) : void
     {
+        // @ts-expect-error So, the knex types aren't entirely right and kinda suck.
         const formattedTable = this.client.parameter(
             prefixedTableName(this.schema, tableName),
             this.builder,
@@ -20,15 +28,12 @@ class DB2SchemaCompiler extends SchemaCompiler
             = `select TABLE_NAME
                from QSYS2.SYSTABLES `
             + `where TYPE = 'T' and TABLE_NAME = ${ formattedTable }`;
-        // @ts-ignore
         if(this.schema)
         {
             sql += ' and TABLE_SCHEMA = ?';
-            // @ts-ignore
             bindings.push(this.schema);
         }
 
-        // @ts-ignore
         this.pushQuery({
             sql,
             bindings,
@@ -39,23 +44,17 @@ class DB2SchemaCompiler extends SchemaCompiler
         });
     }
 
-    toSQL()
+    toSQL() : string[]
     {
+        // @ts-expect-error So, the knex types aren't entirely right and kinda suck.
         const sequence = this.builder._sequence;
-        for(let i = 0, l = sequence.length; i < l; i++)
+        for(let i = 0, len = sequence.length; i < len; i++)
         {
             const query = sequence[i];
-            this[query.method].apply(this, query.args);
+            this[query.method](...query.args);
         }
         return this.sequence;
     }
-}
-
-//----------------------------------------------------------------------------------------------------------------------
-
-function prefixedTableName(prefix, table)
-{
-    return prefix ? `${ prefix }.${ table }` : table;
 }
 
 //----------------------------------------------------------------------------------------------------------------------

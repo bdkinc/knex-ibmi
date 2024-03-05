@@ -12,7 +12,7 @@ import isEmpty from 'lodash/isEmpty';
 
 class DB2QueryCompiler extends QueryCompiler
 {
-    insert()
+    insert() : string | { sql : string; returning ?: any }
     {
         const insertValues = this.single.insert || [];
         // we need to return a value
@@ -21,9 +21,8 @@ class DB2QueryCompiler extends QueryCompiler
         // unless specified in a return
         let sql = `select ${
             this.single.returning
-            ?
-            this.formatter.columnize(this.single.returning)
-            : 'IDENTITY_VAL_LOCAL()'
+                ? this.formatter.columnize(this.single.returning)
+                : 'IDENTITY_VAL_LOCAL()'
         }
                    from FINAL TABLE(`;
         sql += `${ this.with() }
@@ -57,7 +56,7 @@ class DB2QueryCompiler extends QueryCompiler
         };
     }
 
-    _buildInsertData(insertValues, returningSql)
+    _buildInsertData(insertValues, returningSql) : string
     {
         let sql = '';
         const insertData = this._prepInsert(insertValues);
@@ -70,8 +69,8 @@ class DB2QueryCompiler extends QueryCompiler
             sql += `(${ this.formatter.columnize(insertData.columns) }`;
             sql
                 += `) ${ returningSql }values (${
-                this._buildInsertValues(insertData)
-            })`;
+                    this._buildInsertValues(insertData)
+                })`;
         }
         else if(insertValues.length === 1 && insertValues[0])
         {
@@ -84,13 +83,16 @@ class DB2QueryCompiler extends QueryCompiler
         return sql;
     }
 
-    _prepInsert(data)
+    _prepInsert(data) : { columns : any[]; values : any[] }
     {
         if(isObject(data))
         {
-            if(data.hasOwnProperty('migration_time'))
+            if(Object.hasOwn(data, 'migration_time'))
             {
+                // @ts-expect-error - Typescript is being really dumb here
                 const parsed = new Date(data.migration_time);
+
+                // @ts-expect-error - Typescript is being really dumb here
                 data.migration_time = format(parsed, 'yyyy-MM-dd HH:mm:ss');
             }
         }
@@ -112,36 +114,36 @@ class DB2QueryCompiler extends QueryCompiler
         {
             data = data ? [ data ] : [];
         }
-        let i = -1;
-        while(++i < data.length)
+        let idx = -1;
+        while(++idx < data.length)
         {
-            if(data[i] == null)
+            if(data[idx] == null)
             {
                 break;
             }
-            if(i === 0)
+            if(idx === 0)
             {
-                columns = Object.keys(data[i]).sort();
+                columns = Object.keys(data[idx]).sort();
             }
             const row = new Array(columns.length);
-            const keys = Object.keys(data[i]);
-            let j = -1;
-            while(++j < keys.length)
+            const keys = Object.keys(data[idx]);
+            let jdx = -1;
+            while(++jdx < keys.length)
             {
-                const key = keys[j];
+                const key = keys[jdx];
                 let idx = columns.indexOf(key);
                 if(idx === -1)
                 {
                     columns = columns.concat(key).sort();
                     idx = columns.indexOf(key);
-                    let k = -1;
-                    while(++k < values.length)
+                    let kdx = -1;
+                    while(++kdx < values.length)
                     {
-                        values[k].splice(idx, 0, undefined);
+                        values[kdx].splice(idx, 0, undefined);
                     }
                     row.splice(idx, 0, undefined);
                 }
-                row[idx] = data[i][key];
+                row[idx] = data[idx][key];
             }
             values.push(row);
         }
@@ -151,7 +153,7 @@ class DB2QueryCompiler extends QueryCompiler
         };
     }
 
-    update()
+    update() : { sql : string; returning : any; selectReturning : string }
     {
         const withSQL = this.with();
         const updates = this._prepUpdate(this.single.update);
@@ -159,38 +161,36 @@ class DB2QueryCompiler extends QueryCompiler
         const order = this.order();
         const limit = this.limit();
         const { returning } = this.single;
-        const values = Object.values(this.single.update)
-            .map((a) => `${ a }`)
-            .join(', ');
+        // const values = Object.values(this.single.update)
+        //     .map((a) => `${ a }`)
+        //     .join(', ');
 
         const moreWheres
             = this.grouped.where && this.grouped.where.length > 0
-              ?
-              this.grouped.where.map((w) =>
-              {
-                  if(this.single.update.hasOwnProperty(w.column))
-                  {
-                      return;
-                  }
-                  if(!w.value)
-                  {
-                      return;
-                  }
-                  return `"${ w.column }" ${ w.not ? '!' : '' }${ w.operator } ${ w.value }`;
-              })
-              : [];
+                ? this.grouped.where.map((where) =>
+                {
+                    if(Object.hasOwn(this.single.update, where.column))
+                    {
+                        return;
+                    }
+                    if(!where.value)
+                    {
+                        return;
+                    }
+                    return `"${ where.column }" ${ where.not ? '!' : '' }${ where.operator } ${ where.value }`;
+                })
+                : [];
 
-        const selectReturning = returning
-                                ? `select ${ returning.map((a) => `"${ a }"`).join(', ') }
+        const selectReturning = returning ? `select ${ returning.map((item) => `"${ item }"`).join(', ') }
                                    from ${
-                                            this.tableName
-                                        }
+    this.tableName
+}
                                    where ${ Object.entries(this.single.update)
-                                       .map(([ key, value ]) => `"${ key }" = '${ value }'`)
-                                       .join(' and ') }${ moreWheres.length > 0 && ' and ' }${ moreWheres.join(
-                                       ' and '
-                                   ) }`
-                                : '';
+        .map(([ key, value ]) => `"${ key }" = '${ value }'`)
+        .join(' and ') }${ moreWheres.length > 0 && ' and ' }${ moreWheres.join(
+    ' and '
+) }`
+            : '';
 
         const sql = `${ withSQL }update ${ this.single.only ? 'only ' : '' }${ this.tableName }`
             + ` set ${
@@ -202,10 +202,10 @@ class DB2QueryCompiler extends QueryCompiler
         return { sql, returning, selectReturning };
     }
 
-    _returning(method, value, withTrigger = false)
+    _returning(method, value, withTrigger = false) : string | void
     {
         // currently a placeholder in case I need to update return values
-        switch(method)
+        switch (method)
         {
             case 'update':
             case 'insert':
@@ -217,7 +217,7 @@ class DB2QueryCompiler extends QueryCompiler
         }
     }
 
-    columnizeWithPrefix(prefix, target)
+    columnizeWithPrefix(prefix, target) : string
     {
         const columns = typeof target === 'string' ? [ target ] : target;
         let str = '';

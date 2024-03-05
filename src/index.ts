@@ -25,7 +25,8 @@ class DB2Client extends knex.Client
         if(this.dialect && !this.config.client)
         {
             this.logger.warn?.(
-                `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the future. Please use configuration option 'client' instead.`
+                `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the `
+                + `future. Please use configuration option 'client' instead.`
             );
         }
 
@@ -107,10 +108,10 @@ class DB2Client extends knex.Client
                 reuseConnection: true,
             };
             const pool = await this.driver.pool(poolConfig);
-            return await pool.connect();
+            return pool.connect();
         }
 
-        return await this.driver.connect(
+        return this.driver.connect(
             this._getConnectionString(connectionConfig)
         );
     }
@@ -120,7 +121,7 @@ class DB2Client extends knex.Client
     async destroyRawConnection(connection : Connection)
     {
         this.printDebug('destroy connection');
-        return await connection.close();
+        return connection.close();
     }
 
     _getConnectionString(connectionConfig)
@@ -151,7 +152,7 @@ class DB2Client extends knex.Client
             obj = { sql: obj };
         }
         const method = (
-            obj.hasOwnProperty('method') && obj.method !== 'raw'
+            Object.hasOwn(obj, 'method') && obj.method !== 'raw'
                 ? obj.method
                 : obj.sql.split(' ')[0]
         ).toLowerCase();
@@ -190,9 +191,9 @@ class DB2Client extends knex.Client
                 {
                     obj.response = {
                         rows: result.map((row) =>
-                            result.columns && result.columns?.length > 0
-                                ? row[result.columns[0].name]
-                                : row),
+                        {
+                            return (result.columns && result.columns?.length > 0) ? row[result.columns[0].name] : row;
+                        }),
                         rowCount: result.count,
                     };
                 }

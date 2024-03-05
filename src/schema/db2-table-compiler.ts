@@ -9,11 +9,10 @@ import isObject from 'lodash/isObject';
 
 class Db2TableCompiler extends TableCompiler
 {
-    createQuery(columns, ifNot, like)
+    createQuery(columns, ifNot, like) : void
     {
         let createStatement = ifNot
-            ?
-            `if object_id('${ this.tableName() }', 'U') is null `
+            ? `if object_id('${ this.tableName() }', 'U') is null `
             : '';
 
         if(like)
@@ -47,40 +46,36 @@ class Db2TableCompiler extends TableCompiler
         }
     }
 
-    dropUnique(columns, indexName)
+    dropUnique(columns, indexName) : void
     {
         indexName = indexName
-            ?
-            this.formatter.wrap(indexName)
-            :
-            this._indexCommand('unique', this.tableNameRaw, columns);
+            ? this.formatter.wrap(indexName)
+            : this._indexCommand('unique', this.tableNameRaw, columns);
         this.pushQuery(`drop index ${ indexName }`);
     }
 
-    unique(columns, indexName)
+    unique(columns, indexName) : void
     {
         let deferrable;
         let predicate;
         if(isObject(indexName))
         {
+            // @ts-expect-error - This is some JS bullshit that I don't want to rewrite to be type safe
             ({ indexName, deferrable, predicate } = indexName);
         }
         if(deferrable && deferrable !== 'not deferrable')
         {
-            this.client.logger.warn(
-                `IBMi: unique index \`${ indexName }\` will not be deferrable ${ deferrable }.`
+            this.client.logger.warn?.(
+                `DB2: unique index \`${ indexName }\` will not be deferrable ${ deferrable }.`
             );
         }
         indexName = indexName
-            ?
-            this.formatter.wrap(indexName)
-            :
-            this._indexCommand('unique', this.tableNameRaw, columns);
+            ? this.formatter.wrap(indexName)
+            : this._indexCommand('unique', this.tableNameRaw, columns);
         columns = this.formatter.columnize(columns);
 
         const predicateQuery = predicate
-            ?
-            ` ${ this.client.queryCompiler(predicate).where() }`
+            ? ` ${ this.client.queryCompiler(predicate).where() }`
             : '';
 
         this.pushQuery(
@@ -89,7 +84,7 @@ class Db2TableCompiler extends TableCompiler
     }
 
     // All of the columns to "add" for the query
-    addColumns(columns, prefix)
+    addColumns(columns, prefix) : void
     {
         prefix = prefix || this.addColumnsPrefix;
 
@@ -110,9 +105,9 @@ class Db2TableCompiler extends TableCompiler
         }
     }
 
-    async commit(conn)
+    async commit(conn) : Promise<void>
     {
-        return await conn.commit();
+        return conn.commit();
     }
 }
 
