@@ -42,7 +42,7 @@ declare module 'knex/lib/query/querycompiler'
         builder : any;
         tableName : string;
 
-        constructor(client : Knex.Client, builder ?: Knex.QueryBuilder, bindings ?: any);
+        constructor(client : Knex.Client, builder : Knex.QueryBuilder, bindings ?: any);
         toSQL(method, tz) : {
             method : string;
             options : any;

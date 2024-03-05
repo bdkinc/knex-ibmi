@@ -242,24 +242,24 @@ class DB2Client extends knex.Client
         return new Transaction(this, container, config, outerTx);
     }
 
-    schemaCompiler() : SchemaCompiler
+    schemaCompiler(tableBuilder : any) : SchemaCompiler
     {
-        return new SchemaCompiler(this);
+        return new SchemaCompiler(this, tableBuilder);
     }
 
-    tableCompiler() : TableCompiler
+    tableCompiler(tableBuilder : any) : TableCompiler
     {
-        return new TableCompiler(this);
+        return new TableCompiler(this, tableBuilder);
     }
 
-    columnCompiler() : ColumnCompiler
+    columnCompiler(tableCompiler : any, columnCompiler : any) : ColumnCompiler
     {
-        return new ColumnCompiler(this);
+        return new ColumnCompiler(this, tableCompiler, columnCompiler);
     }
 
-    queryCompiler() : QueryCompiler
+    queryCompiler(builder : Knex.QueryBuilder) : QueryCompiler
     {
-        return new QueryCompiler(this);
+        return new QueryCompiler(this, builder);
     }
 
     processResponse(obj : any, runner : any) : any
@@ -338,7 +338,7 @@ interface DB2ConnectionConfig
     port : 50000 | number;
     user : string;
     password : string;
-    driver : 'IBM i Access ODBC Driver' | string;
+    driver : 'IBM DB2 Driver' | string;
     connectionStringParams ?: DB2ConnectionParams;
 }
 

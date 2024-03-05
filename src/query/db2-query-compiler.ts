@@ -23,12 +23,8 @@ class DB2QueryCompiler extends QueryCompiler
             this.single.returning
                 ? this.formatter.columnize(this.single.returning)
                 : 'IDENTITY_VAL_LOCAL()'
-        }
-                   from FINAL TABLE(`;
-        sql += `${ this.with() }
-        insert
-        into
-        ${ this.tableName } `;
+        } from FINAL TABLE(`;
+        sql += `${ this.with() }insert into ${ this.tableName } `;
         const { returning } = this.single;
         const returningSql = returning ? `${ this._returning('insert', returning) } ` : '';
 
@@ -83,7 +79,7 @@ class DB2QueryCompiler extends QueryCompiler
         return sql;
     }
 
-    _prepInsert(data) : { columns : any[]; values : any[] }
+    _prepInsert(data) : string | { columns : any[]; values : any[] }
     {
         if(isObject(data))
         {
@@ -114,19 +110,19 @@ class DB2QueryCompiler extends QueryCompiler
         {
             data = data ? [ data ] : [];
         }
-        let idx = -1;
-        while(++idx < data.length)
+        let dataIdx = -1;
+        while(++dataIdx < data.length)
         {
-            if(data[idx] == null)
+            if(data[dataIdx] == null)
             {
                 break;
             }
-            if(idx === 0)
+            if(dataIdx === 0)
             {
-                columns = Object.keys(data[idx]).sort();
+                columns = Object.keys(data[dataIdx]).sort();
             }
             const row = new Array(columns.length);
-            const keys = Object.keys(data[idx]);
+            const keys = Object.keys(data[dataIdx]);
             let jdx = -1;
             while(++jdx < keys.length)
             {
@@ -143,7 +139,7 @@ class DB2QueryCompiler extends QueryCompiler
                     }
                     row.splice(idx, 0, undefined);
                 }
-                row[idx] = data[idx][key];
+                row[idx] = data[dataIdx][key];
             }
             values.push(row);
         }
@@ -182,10 +178,10 @@ class DB2QueryCompiler extends QueryCompiler
                 : [];
 
         const selectReturning = returning ? `select ${ returning.map((item) => `"${ item }"`).join(', ') }
-                                   from ${
+                                             from ${
     this.tableName
 }
-                                   where ${ Object.entries(this.single.update)
+                                             where ${ Object.entries(this.single.update)
         .map(([ key, value ]) => `"${ key }" = '${ value }'`)
         .join(' and ') }${ moreWheres.length > 0 && ' and ' }${ moreWheres.join(
     ' and '
