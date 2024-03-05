@@ -1,10 +1,20 @@
-**/node_modules
-build
-docs
-srcOld
+# OS artifacts
+.DS_Store
+
+# IDE artifacts
+.vs
+.vscode
 .idea
-old
-testConnection.ts
-package-lock.json
-/.idea/
+.env
+
+# Build artifacts
+.cache
+.eslintcache
 dist
+
+# Node artifacts
+node_modules
+
+# Database
+db/*.sqlite
+db/*.db*
