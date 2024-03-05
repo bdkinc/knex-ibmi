@@ -58,12 +58,12 @@ class DB2Client extends knex.Client
         }
     }
 
-    _driver()
+    _driver() : any
     {
         return odbc;
     }
 
-    wrapIdentifierImpl(value)
+    wrapIdentifierImpl(value) : string
     {
         if(value === '*')
         {
@@ -82,7 +82,7 @@ class DB2Client extends knex.Client
         return `"${ value.replace(/"/g, '""') }"${ arrayAccessor }`;
     }
 
-    printDebug(message : string)
+    printDebug(message : string) : void
     {
         if(process.env.DEBUG === 'true')
         {
@@ -92,7 +92,7 @@ class DB2Client extends knex.Client
 
     // Get a raw connection, called by the pool manager whenever a new
     // connection needs to be added to the pool.
-    async acquireRawConnection()
+    async acquireRawConnection() : Promise<Connection>
     {
         this.printDebug('acquiring raw connection');
         const connectionConfig = this.config.connection;
@@ -118,13 +118,13 @@ class DB2Client extends knex.Client
 
     // Used to explicitly close a connection, called internally by the pool manager
     // when a connection times out or the pool is shutdown.
-    async destroyRawConnection(connection : Connection)
+    async destroyRawConnection(connection : Connection) : Promise<void>
     {
         this.printDebug('destroy connection');
         return connection.close();
     }
 
-    _getConnectionString(connectionConfig)
+    _getConnectionString(connectionConfig) : string
     {
         const connectionStringParams
             = connectionConfig.connectionStringParams || {};
@@ -145,7 +145,7 @@ class DB2Client extends knex.Client
 
     // Runs the query on the specified connection, providing the bindings
     // and any other necessary prep work.
-    async _query(connection : any, obj : any)
+    async _query(connection : any, obj : any) : Promise<any>
     {
         if(!obj || typeof obj == 'string')
         {
@@ -242,27 +242,27 @@ class DB2Client extends knex.Client
         return new Transaction(this, container, config, outerTx);
     }
 
-    schemaCompiler()
+    schemaCompiler() : SchemaCompiler
     {
         return new SchemaCompiler(this);
     }
 
-    tableCompiler()
+    tableCompiler() : TableCompiler
     {
         return new TableCompiler(this);
     }
 
-    columnCompiler()
+    columnCompiler() : ColumnCompiler
     {
         return new ColumnCompiler(this);
     }
 
-    queryCompiler()
+    queryCompiler() : QueryCompiler
     {
         return new QueryCompiler(this);
     }
 
-    processResponse(obj : any, runner : any)
+    processResponse(obj : any, runner : any) : any
     {
         if(obj === null)
         {
