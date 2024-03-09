@@ -105,6 +105,7 @@ try {
 ```
 
 or as Typescript
+note: you will probably need to add skipLibCheck: true in your tsconfig compilerOptions if not there already. I plan to clean up the types so this is not an issue. 
 
 ```typescript
 import { knex } from "knex";
