@@ -4,7 +4,6 @@ import isObject from "lodash/isObject";
 import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
 import { format } from "date-fns";
 import isEmpty from "lodash/isEmpty";
-import * as console from "console";
 
 class IBMiQueryCompiler extends QueryCompiler {
   insert() {
