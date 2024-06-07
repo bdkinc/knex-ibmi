@@ -219,7 +219,6 @@ class DB2Client extends knex.Client {
 
     const resp = obj.response;
     const method = obj.sqlMethod;
-    console.log({ obj });
     if (!resp) {
       this.printDebug("response undefined" + obj);
     }
