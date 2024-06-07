@@ -154,7 +154,7 @@ class DB2Client extends knex.Client {
         // IDENTITY column
         if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
           obj.response = {
-            rows: result.map((row: { [x: string]: any; }) =>
+            rows: result.map((row: { [x: string]: any }) =>
               result.columns && result.columns?.length > 0
                 ? row[result.columns[0].name]
                 : row,
@@ -178,7 +178,9 @@ class DB2Client extends knex.Client {
           obj.response = { rows: result, rowCount: result.count };
         }
       } catch (err: any) {
-        this.printError(err);
+        this.printDebug(err);
+        console.error(err)
+        throw new Error(err)
       }
     }
 
@@ -217,6 +219,10 @@ class DB2Client extends knex.Client {
 
     const resp = obj.response;
     const method = obj.sqlMethod;
+    console.log({ obj });
+    if (!resp) {
+      this.printDebug("response undefined" + obj);
+    }
     const { rows, rowCount } = resp;
 
     if (obj.output) return obj.output.call(runner, resp);
