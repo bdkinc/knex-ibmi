@@ -24,7 +24,7 @@ Currently, this dialect has limited functionality compared to the Knex built-in 
 
 `npm install @bdkinc/knex-ibmi`
 
-Requires Node v14 or higher.
+Requires Node v16 or higher.
 
 ## Dependencies
 
@@ -34,7 +34,7 @@ Requires Node v14 or higher.
 
 ## Usage
 
-This library is written in typescript and compiled to both commonjs and esm.
+This library can be used as commonjs, esm or typescript.
 
 ```javascript
 const knex = require("knex");
@@ -195,5 +195,7 @@ DontDLClose=1
 UsageCount=1
 ```
 
-If that still doesn't work, then unixodbc is probably looking for the config files in the wrong directory. A common case is that the configs are in `/etc` but your system expects them to be somewhere else. In such case, override the path unixodbc looks in via the `ODBCSYSINI` and `ODBCINI` environment variables.
+If that still doesn't work, then unixodbc is probably looking for the config files in the wrong directory.
+A common case is that the configs are in `/etc` but your system expects them to be somewhere else.
+In such a case, override the path unixodbc looks in via the `ODBCSYSINI` and `ODBCINI` environment variables.
 E.g., `ODBCINI=/etc ODBCSYSINI=/etc`.

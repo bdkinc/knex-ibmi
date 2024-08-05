@@ -36,7 +36,6 @@
   "license": "MIT",
   "devDependencies": {
     "@types/chai": "^4.3.17",
-    "@types/jest": "^29.5.12",
     "@types/knex": "^0.16.1",
     "@types/lodash": "^4.17.7",
     "@types/mocha": "^10.0.7",

@@ -1,9 +1,5 @@
 **/node_modules
-build
-docs
-.idea
-old
-testConnection.ts
-package-lock.json
 /.idea/
-dist
+/package-lock.json
+/dist/
+/coverage/
