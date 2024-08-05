@@ -33,6 +33,7 @@ Requires Node v16 or higher.
 ## Dependencies
 
 `npm install odbc` see [odbc](https://github.com/markdirish/node-odbc)
+
 `npm install knex` see [knex](https://github.com/tgriesser/knex)
 
 ## Usage
