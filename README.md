@@ -1,10 +1,13 @@
 [![npm version](http://img.shields.io/npm/v/@bdkinc/knex-ibmi.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
 
-**Disclaimer: This library is in beta. Please submit an issue for any bugs encounter or any questions you have.**
+**Please submit an issue for any bug encounter or any questions you have.**
 
 ## Description
 
-This is an external dialect for [knex](https://github.com/tgriesser/knex). This library uses the ODBC driver and is only tested on IBMi. Here are the IBM OSS Docs https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html
+This is an external dialect for [knex](https://knexjs.org).
+This library uses the ODBC (as recommended here https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html)
+driver and is only tested on IBMi.
+For more information on IBMi OSS here are the [docs](https://ibmi-oss-docs.readthedocs.io/en/latest/README.html)
 
 ## Supported functionality
 
@@ -14,23 +17,23 @@ This is an external dialect for [knex](https://github.com/tgriesser/knex). This 
 
 ## Limitations
 
-Currently, this dialect has limited functionality compared to the Knex built-in dialects. Below are some of the limitations:
+Currently, this dialect has limited functionality compared to the Knex built-in dialects. Below are some limitations:
 
 - No streaming support
 - Possibly other missing functionality
-- Journaling must be handled separately. After a migration is ran journaling can be configured on the newly created tables. I recommend using the schema utility in the i access client solutions software.
+- Journaling must be handled separately. After a migration is run, journaling can be configured on the newly created tables. I recommend using the schema utility in the i access client solutions software.
 
-## Installing
-
-`npm install @bdkinc/knex-ibmi`
+## Installation
+```
+npm install --save odbc knex @bdkinc/ibmi
+```
 
 Requires Node v16 or higher.
 
 ## Dependencies
 
-`npm install odbc` see [IBM ODBC Docs for dependencies](https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html) if you run into any issues
-
-`npm install knex`
+`npm install odbc` see [odbc](https://github.com/markdirish/node-odbc)
+`npm install knex` see [knex](https://github.com/tgriesser/knex)
 
 ## Usage
 
