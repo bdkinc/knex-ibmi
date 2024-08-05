@@ -1,114 +1,100 @@
-// @ts-ignore
 import TableCompiler from "knex/lib/schema/tablecompiler";
 import isObject from "lodash/isObject";
+import { Connection } from "odbc";
 
 class IBMiTableCompiler extends TableCompiler {
-  createQuery(columns, ifNot, like) {
+  createQuery(columns: { sql: any[] }, ifNot: any, like: any) {
     let createStatement = ifNot
-      // @ts-ignore
       ? `if object_id('${this.tableName()}', 'U') is null `
       : "";
 
     if (like) {
       // This query copy only columns and not all indexes and keys like other databases.
-      // @ts-ignore
       createStatement += `select * into ${this.tableName()} from ${this.tableNameLike()} WHERE 0=1`;
     } else {
       createStatement +=
         "create table " +
-        // @ts-ignore
         this.tableName() +
-        // @ts-ignore
         (this._formatting ? " (\n    " : " (") +
-        // @ts-ignore
         columns.sql.join(this._formatting ? ",\n    " : ", ") +
-        // @ts-ignore
         this._addChecks() +
         ")";
     }
 
-    // @ts-ignore
     this.pushQuery(createStatement);
 
-    // @ts-ignore
     if (this.single.comment) {
-      // @ts-ignore
       this.comment(this.single.comment);
     }
+
     if (like) {
-      // @ts-ignore
       this.addColumns(columns, this.addColumnsPrefix);
     }
   }
 
-  dropUnique(columns, indexName) {
+  dropUnique(columns: string[], indexName: any) {
     indexName = indexName
-      // @ts-ignore
       ? this.formatter.wrap(indexName)
-      // @ts-ignore
-      : this._indexCommand('unique', this.tableNameRaw, columns);
-    // @ts-ignore
+      : this._indexCommand("unique", this.tableNameRaw, columns);
+
     this.pushQuery(`drop index ${indexName}`);
   }
 
-  unique(columns, indexName) {
-    let deferrable;
-    let predicate;
+  unique(
+    columns: string[],
+    indexName: { indexName: any; deferrable: any; predicate: any },
+  ) {
+    let deferrable: string = "";
+    let predicate: any;
+
     if (isObject(indexName)) {
-      ({ indexName, deferrable, predicate } = indexName);
+      deferrable = indexName.deferrable;
+      predicate = indexName.predicate;
+      indexName = indexName.indexName;
     }
-    if (deferrable && deferrable !== 'not deferrable') {
-      // @ts-ignore
-      this.client.logger.warn(
-        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`
+
+    if (deferrable && deferrable !== "not deferrable") {
+      this.client.logger.warn?.(
+        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`,
       );
     }
+
     indexName = indexName
-      // @ts-ignore
       ? this.formatter.wrap(indexName)
-      // @ts-ignore
-      : this._indexCommand('unique', this.tableNameRaw, columns);
-    // @ts-ignore
+      : this._indexCommand("unique", this.tableNameRaw, columns);
     columns = this.formatter.columnize(columns);
 
     const predicateQuery = predicate
-      // @ts-ignore
-      ? ' ' + this.client.queryCompiler(predicate).where()
-      : '';
+      ? " " + this.client.queryCompiler(predicate).where()
+      : "";
 
-    // @ts-ignore
     this.pushQuery(
-      // @ts-ignore
-      `create unique index ${indexName} on ${this.tableName()} (${columns})${predicateQuery}`
+      `create unique index ${indexName} on ${this.tableName()} (${columns})${predicateQuery}`,
     );
   }
 
   // All of the columns to "add" for the query
-  addColumns(columns, prefix) {
-    // @ts-ignore
+  addColumns(columns: any, prefix: any) {
     prefix = prefix || this.addColumnsPrefix;
 
     if (columns.sql.length > 0) {
       const columnSql = columns.sql.map((column) => {
         return prefix + column;
       });
-      // @ts-ignore
       this.pushQuery({
         sql:
-          // @ts-ignore
-          (this.lowerCase ? 'alter table ' : 'ALTER TABLE ') +
-          // @ts-ignore
+          (this.lowerCase ? "alter table " : "ALTER TABLE ") +
           this.tableName() +
-          ' ' +
-          columnSql.join(' '),
+          " " +
+          columnSql.join(" "),
         bindings: columns.bindings,
       });
     }
   }
 
-  async commit(conn) {
-    return await conn.commit();
+  async commit(connection: Connection) {
+    return await connection.commit();
   }
 }
 
-export default IBMiTableCompiler
+export default IBMiTableCompiler;

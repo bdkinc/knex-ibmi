@@ -24,7 +24,7 @@ Currently, this dialect has limited functionality compared to the Knex built-in 
 
 `npm install @bdkinc/knex-ibmi`
 
-Requires Node v14 or higher.
+Requires Node v16 or higher.
 
 ## Dependencies
 
@@ -34,7 +34,7 @@ Requires Node v14 or higher.
 
 ## Usage
 
-This library is written in typescript and compiled to both commonjs and esm.
+This library can be used as commonjs, esm or typescript.
 
 ```javascript
 const knex = require("knex");
@@ -105,7 +105,6 @@ try {
 ```
 
 or as Typescript
-note: you will probably need to add skipLibCheck: true in your tsconfig compilerOptions if not there already. I plan to clean up the types so this is not an issue. 
 
 ```typescript
 import { knex } from "knex";
@@ -143,33 +142,6 @@ try {
 }
 ```
 
-## Pooling
-
-Tarn Pooling Configuration
-
-```javascript
-const db = knex({
-  client: DB2Dialect,
-  connection: {
-    host: "localhost",
-    database: "knextest",
-    port: 50000,
-    user: "<user>",
-    password: "<password>",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-    },
-  },
-  pool: {
-    min: 2,
-    max: 10,
-    acquireConnectionTimeout: 6000,
-  },
-});
-```
-
 ## Configuring your driver
 
 If you don't know the name of your installed driver, then look in `odbcinst.ini`. You can find the full path of the file by running `odbcinst -j`.
@@ -195,5 +167,7 @@ DontDLClose=1
 UsageCount=1
 ```
 
-If that still doesn't work, then unixodbc is probably looking for the config files in the wrong directory. A common case is that the configs are in `/etc` but your system expects them to be somewhere else. In such case, override the path unixodbc looks in via the `ODBCSYSINI` and `ODBCINI` environment variables.
+If that still doesn't work, then unixodbc is probably looking for the config files in the wrong directory.
+A common case is that the configs are in `/etc` but your system expects them to be somewhere else.
+In such a case, override the path unixodbc looks in via the `ODBCSYSINI` and `ODBCINI` environment variables.
 E.g., `ODBCINI=/etc ODBCSYSINI=/etc`.

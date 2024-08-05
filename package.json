@@ -1,20 +1,20 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.1.7",
+  "version": "0.2.1",
   "description": "Knex dialect for IBMi",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "/dist",
-    "/src"
+    "/dist"
   ],
   "engines": {
     "node": ">=16"
   },
   "scripts": {
     "build": "tsup src/index.ts --dts",
-    "lint:scripts": "eslint . --ext .ts",
-    "format:scripts": "prettier . --write"
+    "test": "ts-mocha -p tsconfig.json --import=tsx test/**/*.spec.ts test/**/**/*.spec.ts --exit",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier . --write"
   },
   "keywords": [
     "knex",
@@ -35,22 +35,26 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@faker-js/faker": "^8.3.1",
+    "@types/chai": "^4.3.17",
     "@types/knex": "^0.16.1",
-    "@typescript-eslint/eslint-plugin": "^6.14.0",
-    "@typescript-eslint/parser": "^6.14.0",
-    "debug": "^4.3.4",
-    "eslint": "^8.56.0",
+    "@types/lodash": "^4.17.7",
+    "@types/mocha": "^10.0.7",
+    "@types/node": "^22.1.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "chai": "^5.1.1",
+    "debug": "^4.3.6",
+    "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.0.1",
-    "prettier": "^3.1.1",
-    "ts-node": "^10.9.2",
-    "tslib": "^2.6.2",
-    "tsup": "^8.0.1",
-    "typescript": "^5.3.3"
+    "mocha": "^10.7.0",
+    "prettier": "^3.3.3",
+    "ts-mocha": "^10.0.0",
+    "tsup": "^8.2.4",
+    "tsx": "^4.16.5",
+    "typescript": "^5.5.4"
   },
   "dependencies": {
-    "date-fns": "^2.30.0",
+    "date-fns": "^3.6.0",
     "knex": "^3",
     "lodash": "^4.17.21",
     "odbc": "^2.4.8"

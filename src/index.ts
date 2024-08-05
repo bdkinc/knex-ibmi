@@ -1,7 +1,6 @@
-import * as process from "process";
-import { Connection } from "odbc";
+import process from "node:process";
 import { knex, Knex } from "knex";
-import * as odbc from "odbc";
+import odbc from "odbc";
 import SchemaCompiler from "./schema/ibmi-compiler";
 import TableCompiler from "./schema/ibmi-tablecompiler";
 import ColumnCompiler from "./schema/ibmi-columncompiler";
@@ -26,9 +25,10 @@ class DB2Client extends knex.Client {
       );
     }
 
-    if (config.version) {
-      this.version = config.version;
-    }
+    // TODO: Do we need a version number?
+    // if (config.version) {
+    //   this.version = config.version;
+    // }
 
     if (this.driverName && config.connection) {
       this.initializeDriver();
@@ -36,6 +36,7 @@ class DB2Client extends knex.Client {
         this.initializePool(config);
       }
     }
+
     this.valueForUndefined = this.raw("DEFAULT");
     if (config.useNullAsDefault) {
       this.valueForUndefined = null;
@@ -46,24 +47,34 @@ class DB2Client extends knex.Client {
     return odbc;
   }
 
+  wrapIdentifierImpl(value: any) {
+    // override default wrapper (")
+    // we don't want to use it since
+    // it makes identifier case-sensitive in DB2
+    return value
+  }
+
   printDebug(message: string) {
     if (process.env.DEBUG === "true") {
-      // @ts-ignore
-      this.logger.debug("knex-ibmi: " + message);
+      if (this.logger.debug) {
+        this.logger.debug("knex-ibmi: " + message);
+      }
     }
   }
 
   printError(message: string) {
     if (process.env.DEBUG === "true") {
-      // @ts-ignore
-      this.logger.error("knex-ibmi: " + message);
+      if (this.logger.error) {
+        this.logger.error("knex-ibmi: " + message);
+      }
     }
   }
 
   printWarn(message: string) {
     if (process.env.DEBUG === "true") {
-      // @ts-ignore
-      this.logger.warn("knex-ibmi: " + message);
+      if (this.logger.warn) {
+        this.logger.warn("knex-ibmi: " + message);
+      }
     }
   }
 
@@ -71,17 +82,18 @@ class DB2Client extends knex.Client {
   // connection needs to be added to the pool.
   async acquireRawConnection() {
     this.printDebug("acquiring raw connection");
-    const connectionConfig = this.config.connection;
+    const connectionConfig = this.config.connection as DB2ConnectionConfig;
+
+    if (!connectionConfig) {
+      return this.printError("There is no connection config defined");
+    }
 
     this.printDebug(
-      // @ts-ignore
       "connection config: " + this._getConnectionString(connectionConfig),
     );
 
     if (this.config?.pool) {
-      // @ts-ignore
       const poolConfig = {
-        // @ts-ignore
         connectionString: this._getConnectionString(connectionConfig),
         connectionTimeout: this.config?.acquireConnectionTimeout || 60000,
         initialSize: this.config?.pool?.min || 2,
@@ -93,14 +105,13 @@ class DB2Client extends knex.Client {
     }
 
     return await this.driver.connect(
-      // @ts-ignore
       this._getConnectionString(connectionConfig),
     );
   }
 
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
-  async destroyRawConnection(connection: Connection) {
+  async destroyRawConnection(connection: any) {
     this.printDebug("destroy connection");
     return await connection.close();
   }
@@ -108,6 +119,7 @@ class DB2Client extends knex.Client {
   _getConnectionString(connectionConfig: DB2ConnectionConfig) {
     const connectionStringParams =
       connectionConfig.connectionStringParams || {};
+
     const connectionStringExtension = Object.keys(
       connectionStringParams,
     ).reduce((result, key) => {
@@ -116,15 +128,23 @@ class DB2Client extends knex.Client {
     }, "");
 
     return `${
-      `DRIVER=${connectionConfig.driver};SYSTEM=${connectionConfig.host};HOSTNAME=${connectionConfig.host};` +
-      `PORT=${connectionConfig.port};DATABASE=${connectionConfig.database};` +
-      `UID=${connectionConfig.user};PWD=${connectionConfig.password};`
-    }${connectionStringExtension}`;
+      `DRIVER=${connectionConfig.driver};` +
+      `SYSTEM=${connectionConfig.host};` +
+      `HOSTNAME=${connectionConfig.host};` +
+      `PORT=${connectionConfig.port};` +
+      `DATABASE=${connectionConfig.database};` +
+      `UID=${connectionConfig.user};` +
+      `PWD=${connectionConfig.password};` +
+      connectionStringExtension
+    }`;
   }
 
   // Runs the query on the specified connection, providing the bindings
   async _query(connection: any, obj: any) {
-    if (!obj || typeof obj == "string") obj = { sql: obj };
+    if (!obj || typeof obj == "string") {
+      obj = { sql: obj };
+    }
+
     const method = (
       obj.hasOwnProperty("method") && obj.method !== "raw"
         ? obj.method
@@ -148,6 +168,7 @@ class DB2Client extends knex.Client {
 
         const result = await statement.execute();
         this.printDebug(result);
+        // TODO: evaluate if this is necessary
         // this is hacky we check the SQL for the ID column
         // we check for the IDENTITY scalar function
         // if that function is present, then we just return the value of the
@@ -178,9 +199,8 @@ class DB2Client extends knex.Client {
           obj.response = { rows: result, rowCount: result.count };
         }
       } catch (err: any) {
-        this.printDebug(err);
-        console.error(err)
-        throw new Error(err)
+        this.printError(err);
+        throw new Error(err);
       }
     }
 
@@ -190,31 +210,26 @@ class DB2Client extends knex.Client {
   }
 
   transaction(container: any, config: any, outerTx: any): Knex.Transaction {
-    // @ts-ignore
-    return new Transaction(this, ...arguments);
+    return new Transaction(this, container, config, outerTx);
   }
 
-  schemaCompiler() {
-    // @ts-ignore
-    return new SchemaCompiler(this, ...arguments);
+  schemaCompiler(tableBuilder: any) {
+    return new SchemaCompiler(this, tableBuilder);
   }
 
-  tableCompiler() {
-    // @ts-ignore
-    return new TableCompiler(this, ...arguments);
+  tableCompiler(tableBuilder: any) {
+    return new TableCompiler(this, tableBuilder);
   }
 
-  columnCompiler() {
-    // @ts-ignore
-    return new ColumnCompiler(this, ...arguments);
+  columnCompiler(tableCompiler: any, columnCompiler: any) {
+    return new ColumnCompiler(this, tableCompiler, columnCompiler);
   }
 
-  queryCompiler() {
-    // @ts-ignore
-    return new QueryCompiler(this, ...arguments);
+  queryCompiler(builder: Knex.QueryBuilder) {
+    return new QueryCompiler(this, builder);
   }
 
-  processResponse(obj: any, runner: any) {
+  processResponse(obj: any, runner: any): any {
     if (obj === null) return null;
 
     const resp = obj.response;
@@ -287,6 +302,8 @@ export interface DB2Config {
   client: any;
   connection: DB2ConnectionConfig;
   pool?: DB2PoolConfig;
+  version?: string;
+  useNullAsDefault?: boolean;
 }
 
 export const DB2Dialect = DB2Client;

@@ -1,12 +1,17 @@
+declare module "knex/lib/formatter/wrappingFormatter";
+
 declare module "knex/lib/execution/transaction" {
   import { EventEmitter } from "node:events";
   import { Knex } from "knex";
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+  // eslint-disable-next-line
   interface Transaction extends Knex.Transaction {}
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+  // eslint-disable-next-line
   class Transaction extends EventEmitter {
     constructor(client: Knex.Client, container: any, config: any, outerTx: any);
+    isCompleted: () => boolean;
+    begin(conn: any): any;
+    savepoint(conn: any): any;
   }
 
   export default Transaction;
