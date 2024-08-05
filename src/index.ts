@@ -1,6 +1,6 @@
 import process from "node:process";
 import { knex, Knex } from "knex";
-import odbc, { Connection } from "odbc";
+import odbc from "odbc";
 import SchemaCompiler from "./schema/ibmi-compiler";
 import TableCompiler from "./schema/ibmi-tablecompiler";
 import ColumnCompiler from "./schema/ibmi-columncompiler";
@@ -111,7 +111,7 @@ class DB2Client extends knex.Client {
 
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
-  async destroyRawConnection(connection: Connection) {
+  async destroyRawConnection(connection: any) {
     this.printDebug("destroy connection");
     return await connection.close();
   }
