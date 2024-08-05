@@ -299,11 +299,11 @@ interface DB2ConnectionConfig {
 }
 
 export interface DB2Config {
-  client: DB2Client;
+  client: any;
   connection: DB2ConnectionConfig;
   pool?: DB2PoolConfig;
-  // version?: string;
-  // useNullAsDefault?: boolean;
+  version?: string;
+  useNullAsDefault?: boolean;
 }
 
 export const DB2Dialect = DB2Client;

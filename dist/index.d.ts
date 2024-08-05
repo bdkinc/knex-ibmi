@@ -95,9 +95,11 @@ interface DB2ConnectionConfig {
     connectionStringParams?: DB2ConnectionParams;
 }
 interface DB2Config {
-    client: DB2Client;
+    client: any;
     connection: DB2ConnectionConfig;
     pool?: DB2PoolConfig;
+    version?: string;
+    useNullAsDefault?: boolean;
 }
 declare const DB2Dialect: typeof DB2Client;
 
