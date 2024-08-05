@@ -1,12 +1,15 @@
 {
   "compilerOptions": {
     "outDir": "./dist",
-    "target": "ESNext",
+    "target": "ES2020",
     "module": "commonjs",
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
     "useDefineForClassFields": true,
-    "strict": true,
+    "strict": false,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
     "skipLibCheck": false,
     "sourceMap": true,
     "resolveJsonModule": true,
@@ -17,8 +20,11 @@
     "noImplicitReturns": false,
     "noImplicitAny": false,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true
+    "declaration": true,
+    "strictPropertyInitialization": true,
+    "experimentalDecorators": true
   },
-  "include": ["src/**/*"],
+  "files": ["src/index.ts", "types/knex-shim.d.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
 }

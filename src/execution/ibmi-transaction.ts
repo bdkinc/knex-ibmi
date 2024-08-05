@@ -1,19 +1,19 @@
-// @ts-ignore
 import Transaction from "knex/lib/execution/transaction";
+import { Knex } from "knex";
 
 class IBMiTransaction extends Transaction {
-  async begin(connection: any) {
-    await connection.beginTransaction();
+  begin(connection: any): Knex.QueryBuilder<any, any[]> {
+    connection.beginTransaction();
     return connection;
   }
 
-  async rollback(connection: any) {
-    await connection.rollback();
+  rollback(connection: any): Knex.QueryBuilder<any, any[]> {
+    connection.rollback();
     return connection;
   }
 
-  async commit(connection: any) {
-    await connection.commit();
+  commit(connection: any): Knex.QueryBuilder<any, any[]> {
+    connection.commit();
     return connection;
   }
 }

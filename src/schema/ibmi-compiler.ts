@@ -1,51 +1,46 @@
-// @ts-ignore
 import SchemaCompiler from "knex/lib/schema/compiler";
 
 class IBMiSchemaCompiler extends SchemaCompiler {
-  hasTable(tableName) {
-    // @ts-ignore
+  hasTable(tableName: any) {
+    // @ts-expect-error
     const formattedTable = this.client.parameter(
-      // @ts-ignore
       prefixedTableName(this.schema, tableName),
-      // @ts-ignore
       this.builder,
-      // @ts-ignore
       this.bindingsHolder,
     );
     const bindings = [tableName];
     let sql =
       `select TABLE_NAME from QSYS2.SYSTABLES ` +
       `where TYPE = 'T' and TABLE_NAME = ${formattedTable}`;
-    // @ts-ignore
+
     if (this.schema) {
       sql += " and TABLE_SCHEMA = ?";
-      // @ts-ignore
       bindings.push(this.schema);
     }
 
-    // @ts-ignore
     this.pushQuery({
       sql,
       bindings,
-      output: (resp) => {
+      output: (resp: { rowCount: number; }) => {
         return resp.rowCount > 0;
       },
     });
   }
 
   toSQL() {
-    // @ts-ignore
+    // @ts-expect-error
     const sequence = this.builder._sequence;
+
     for (let i = 0, l = sequence.length; i < l; i++) {
       const query = sequence[i];
       this[query.method].apply(this, query.args);
     }
-    // @ts-ignore
+
     return this.sequence;
   }
 }
 
-function prefixedTableName(prefix, table) {
+function prefixedTableName(prefix: any, table: any) {
   return prefix ? `${prefix}.${table}` : table;
 }
 

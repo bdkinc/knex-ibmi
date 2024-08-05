@@ -1,4 +1,3 @@
-// @ts-ignore
 import QueryCompiler from "knex/lib/query/querycompiler";
 import isObject from "lodash/isObject";
 import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
@@ -7,27 +6,24 @@ import isEmpty from "lodash/isEmpty";
 
 class IBMiQueryCompiler extends QueryCompiler {
   insert() {
-    // @ts-ignore
     const insertValues = this.single.insert || [];
-    // we need to return a value
+
+    // TODO: re-evaluate
+    // we need to return a value,
     // we need to wrap the insert statement in a select statement
     // we use the "IDENTITY_VAL_LOCAL()" function to return the IDENTITY
     // unless specified in a return
-    // @ts-ignore
     let sql = `select ${
-      // @ts-ignore
       this.single.returning
-        ? // @ts-ignore
-          this.formatter.columnize(this.single.returning)
+        ? this.formatter.columnize(this.single.returning)
         : "IDENTITY_VAL_LOCAL()"
     } from FINAL TABLE(`;
-    // @ts-ignore
+
     sql += this.with() + `insert into ${this.tableName} `;
-    // @ts-ignore
+
     const { returning } = this.single;
     const returningSql = returning
-      ? // @ts-ignore
-        this._returning("insert", returning) + " "
+      ? this._returning("insert", returning, undefined) + " "
       : "";
 
     if (Array.isArray(insertValues)) {
@@ -36,13 +32,11 @@ class IBMiQueryCompiler extends QueryCompiler {
       }
     } else if (typeof insertValues === "object" && isEmpty(insertValues)) {
       return {
-        // @ts-ignore
         sql: sql + returningSql + this._emptyInsertValue,
         returning,
       };
     }
 
-    // @ts-ignore
     sql += this._buildInsertData(insertValues, returningSql);
     sql += ")";
 
@@ -52,34 +46,36 @@ class IBMiQueryCompiler extends QueryCompiler {
     };
   }
 
-  _buildInsertData(insertValues, returningSql) {
+  _buildInsertData(insertValues: string | any[], returningSql: string) {
     let sql = "";
     const insertData = this._prepInsert(insertValues);
+
     if (typeof insertData === "string") {
       sql += insertData;
     } else {
       if (insertData.columns.length) {
-        // @ts-ignore
         sql += `(${this.formatter.columnize(insertData.columns)}`;
         sql +=
           `) ${returningSql}values (` +
-          // @ts-ignore
           this._buildInsertValues(insertData) +
           ")";
       } else if (insertValues.length === 1 && insertValues[0]) {
-        // @ts-ignore
         sql += returningSql + this._emptyInsertValue;
       } else {
         return "";
       }
     }
+
     return sql;
   }
 
-  _prepInsert(data) {
+  _prepInsert(data: any) {
     if (isObject(data)) {
+      // this is for timestamps in knex migrations
       if (data.hasOwnProperty("migration_time")) {
+        // @ts-expect-error
         const parsed = new Date(data.migration_time);
+        // @ts-expect-error
         data.migration_time = format(parsed, "yyyy-MM-dd HH:mm:ss");
       }
     }
@@ -87,24 +83,37 @@ class IBMiQueryCompiler extends QueryCompiler {
     const isRaw = rawOrFn_(
       data,
       undefined,
-      // @ts-ignore
       this.builder,
-      // @ts-ignore
       this.client,
-      // @ts-ignore
       this.bindingsHolder,
     );
-    if (isRaw) return isRaw;
+
+    if (isRaw) {
+      return isRaw;
+    }
+
     let columns: any[] = [];
     const values: any[] = [];
-    if (!Array.isArray(data)) data = data ? [data] : [];
+
+    if (!Array.isArray(data)) {
+      data = data ? [data] : [];
+    }
+
     let i = -1;
+
     while (++i < data.length) {
-      if (data[i] == null) break;
-      if (i === 0) columns = Object.keys(data[i]).sort();
+      if (data[i] == null) {
+        break;
+      }
+
+      if (i === 0) {
+        columns = Object.keys(data[i]).sort();
+      }
+
       const row = new Array(columns.length);
       const keys = Object.keys(data[i]);
       let j = -1;
+
       while (++j < keys.length) {
         const key = keys[j];
         let idx = columns.indexOf(key);
@@ -119,8 +128,10 @@ class IBMiQueryCompiler extends QueryCompiler {
         }
         row[idx] = data[i][key];
       }
+
       values.push(row);
     }
+
     return {
       columns,
       values,
@@ -128,30 +139,19 @@ class IBMiQueryCompiler extends QueryCompiler {
   }
 
   update() {
-    // @ts-ignore
     const withSQL = this.with();
-    // @ts-ignore
     const updates = this._prepUpdate(this.single.update);
-    // @ts-ignore
     const where = this.where();
-    // @ts-ignore
     const order = this.order();
-    // @ts-ignore
     const limit = this.limit();
-    // @ts-ignore
     const { returning } = this.single;
-    // @ts-ignore
     const values = Object.values(this.single.update)
       .map((a) => `${a}`)
       .join(", ");
 
-    // @ts-ignore
     const moreWheres =
-      // @ts-ignore
       this.grouped.where && this.grouped.where.length > 0
-        ? // @ts-ignore
-          this.grouped.where.map((w) => {
-            // @ts-ignore
+        ? this.grouped.where.map((w) => {
             if (this.single.update.hasOwnProperty(w.column)) return;
             if (!w.value) return;
             return `"${w.column}" ${w.not ? "!" : ""}${w.operator} ${w.value}`;
@@ -160,9 +160,7 @@ class IBMiQueryCompiler extends QueryCompiler {
 
     let selectReturning = returning
       ? `select ${returning.map((a) => `"${a}"`).join(", ")} from ${
-          // @ts-ignore
           this.tableName
-          // @ts-ignore
         } where ${Object.entries(this.single.update)
           .map(([key, value]) => `"${key}" = '${value}'`)
           .join(" and ")}${moreWheres.length > 0 && " and "}${moreWheres.join(
@@ -172,10 +170,8 @@ class IBMiQueryCompiler extends QueryCompiler {
 
     const sql =
       withSQL +
-      // @ts-ignore
       `update ${this.single.only ? "only " : ""}${this.tableName}` +
       " set " +
-      // @ts-ignore
       updates.join(", ") +
       (where ? ` ${where}` : "") +
       (order ? ` ${order}` : "") +
@@ -184,34 +180,30 @@ class IBMiQueryCompiler extends QueryCompiler {
     return { sql, returning, selectReturning };
   }
 
-  _returning(method, value, withTrigger) {
+  _returning(method: string, value: any, withTrigger: undefined) {
     // currently a placeholder in case I need to update return values
+    // or if we need to do anything with triggers
     switch (method) {
       case "update":
       case "insert":
-        return value
-          ? // @ts-ignore
-            `${withTrigger ? " into #out" : ""}`
-          : "";
+        return value ? `${withTrigger ? " into #out" : ""}` : "";
       case "del":
-        return value
-          ? // @ts-ignore
-            `${withTrigger ? " into #out" : ""}`
-          : "";
+        return value ? `${withTrigger ? " into #out" : ""}` : "";
       case "rowcount":
         return value ? "select @@rowcount" : "";
     }
   }
 
-  columnizeWithPrefix(prefix, target) {
+  columnizeWithPrefix(prefix: string, target: any) {
     const columns = typeof target === "string" ? [target] : target;
-    let str = "",
-      i = -1;
+    let str = "";
+    let i = -1;
+
     while (++i < columns.length) {
       if (i > 0) str += ", ";
-      // @ts-ignore
       str += prefix + this.wrap(columns[i]);
     }
+
     return str;
   }
 }
