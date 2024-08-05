@@ -105,7 +105,6 @@ try {
 ```
 
 or as Typescript
-note: you will probably need to add skipLibCheck: true in your tsconfig compilerOptions if not there already. I plan to clean up the types so this is not an issue. 
 
 ```typescript
 import { knex } from "knex";
@@ -141,33 +140,6 @@ try {
 } finally {
   process.exit();
 }
-```
-
-## Pooling
-
-Tarn Pooling Configuration
-
-```javascript
-const db = knex({
-  client: DB2Dialect,
-  connection: {
-    host: "localhost",
-    database: "knextest",
-    port: 50000,
-    user: "<user>",
-    password: "<password>",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-    },
-  },
-  pool: {
-    min: 2,
-    max: 10,
-    acquireConnectionTimeout: 6000,
-  },
-});
 ```
 
 ## Configuring your driver
