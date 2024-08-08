@@ -17,15 +17,11 @@ For more information on IBMi OSS here are the [docs](https://ibmi-oss-docs.readt
 
 ## Limitations
 
-Currently, this dialect has limited functionality compared to the Knex built-in dialects. Below are some limitations:
-
 - No streaming support
-- Possibly other missing functionality
-- Journaling must be handled separately. After a migration is run, journaling can be configured on the newly created tables. I recommend using the schema utility in the i access client solutions software.
 
 ## Installation
 ```
-npm install --save odbc knex @bdkinc/ibmi
+npm install --save odbc knex @bdkinc/knex-ibmi
 ```
 
 Requires Node v16 or higher.
