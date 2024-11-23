@@ -145,30 +145,14 @@ class IBMiQueryCompiler extends QueryCompiler {
     const order = this.order();
     const limit = this.limit();
     const { returning } = this.single;
-    const values = Object.values(this.single.update)
-      .map((a) => `${a}`)
-      .join(", ");
 
-    const moreWheres =
-      this.grouped.where && this.grouped.where.length > 0
-        ? this.grouped.where.map((w) => {
-            if (this.single.update.hasOwnProperty(w.column)) return;
-            if (!w.value) return;
-            return `"${w.column}" ${w.not ? "!" : ""}${w.operator} ${w.value}`;
-          })
-        : [];
+    let sql = "";
 
-    let selectReturning = returning
-      ? `select ${returning.map((a) => `"${a}"`).join(", ")} from ${
-          this.tableName
-        } where ${Object.entries(this.single.update)
-          .map(([key, value]) => `"${key}" = '${value}'`)
-          .join(" and ")}${moreWheres.length > 0 && " and "}${moreWheres.join(
-          " and ",
-        )}`
-      : "";
+    if (returning) {
+      sql += `select ${this.formatter.columnize(this.single.returning)} from FINAL TABLE(`;
+    }
 
-    const sql =
+    sql +=
       withSQL +
       `update ${this.single.only ? "only " : ""}${this.tableName}` +
       " set " +
@@ -177,7 +161,11 @@ class IBMiQueryCompiler extends QueryCompiler {
       (order ? ` ${order}` : "") +
       (limit ? ` ${limit}` : "");
 
-    return { sql, returning, selectReturning };
+    if (returning) {
+      sql += `)`;
+    }
+
+    return { sql, returning };
   }
 
   _returning(method: string, value: any, withTrigger: undefined) {
