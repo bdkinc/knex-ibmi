@@ -1,8 +1,6 @@
 import QueryCompiler from "knex/lib/query/querycompiler";
-import isObject from "lodash/isObject";
 import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
 import { format } from "date-fns";
-import isEmpty from "lodash/isEmpty";
 
 class IBMiQueryCompiler extends QueryCompiler {
   insert() {
@@ -30,7 +28,10 @@ class IBMiQueryCompiler extends QueryCompiler {
       if (insertValues.length === 0) {
         return "";
       }
-    } else if (typeof insertValues === "object" && isEmpty(insertValues)) {
+    } else if (
+      typeof insertValues === "object" &&
+      Object.keys(insertValues).length === 0
+    ) {
       return {
         sql: sql + returningSql + this._emptyInsertValue,
         returning,
@@ -69,15 +70,11 @@ class IBMiQueryCompiler extends QueryCompiler {
     return sql;
   }
 
-  _prepInsert(data: any) {
-    if (isObject(data)) {
-      // this is for timestamps in knex migrations
-      if (data.hasOwnProperty("migration_time")) {
-        // @ts-expect-error
-        const parsed = new Date(data.migration_time);
-        // @ts-expect-error
-        data.migration_time = format(parsed, "yyyy-MM-dd HH:mm:ss");
-      }
+  _prepInsert(data: any): { columns: any; values: any } {
+    // this is for timestamps in knex migrations
+    if (typeof data === "object" && data.migration_time) {
+      const parsed = new Date(data.migration_time);
+      data.migration_time = format(parsed, "yyyy-MM-dd HH:mm:ss");
     }
 
     const isRaw = rawOrFn_(
@@ -138,7 +135,7 @@ class IBMiQueryCompiler extends QueryCompiler {
     };
   }
 
-  update() {
+  update(): { sql: string; returning: any } {
     const withSQL = this.with();
     const updates = this._prepUpdate(this.single.update);
     const where = this.where();
