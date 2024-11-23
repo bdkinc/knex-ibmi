@@ -35,7 +35,7 @@ Requires Node v16 or higher.
 
 ## Usage
 
-This library can be used as commonjs, esm or typescript.
+This library can be used as commonjs, esm or TypeScript.
 
 ```javascript
 const knex = require("knex");
@@ -45,7 +45,7 @@ const db = knex({
   client: DB2Dialect,
   connection: {
     host: "localhost", // hostname or ip address of server
-    database: "knextest", // usually named in your odbc.ini connection
+    database: "*LOCAL", // usually named in your odbc.ini connection
     port: 50000, // default port
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
@@ -80,7 +80,7 @@ const db = knex({
   client: DB2Dialect,
   connection: {
     host: "localhost", // hostname or ip address of server
-    database: "knextest", // usually named in your odbc.ini connection
+    database: "*LOCAL", // usually named in your odbc.ini connection
     port: 50000, // default port
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
@@ -117,7 +117,7 @@ const config: DB2Config = {
   client: DB2Dialect,
   connection: {
     host: "localhost", // hostname or ip address of server
-    database: "knextest", // usually named in your odbc.ini connection
+    database: "*LOCAL", // usually named in your odbc.ini connection
     port: 50000, // default port
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
