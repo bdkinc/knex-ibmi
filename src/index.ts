@@ -51,7 +51,7 @@ class DB2Client extends knex.Client {
     // override default wrapper (")
     // we don't want to use it since
     // it makes identifier case-sensitive in DB2
-    return value
+    return value;
   }
 
   printDebug(message: string) {
@@ -63,11 +63,10 @@ class DB2Client extends knex.Client {
   }
 
   printError(message: string) {
-    if (process.env.DEBUG === "true") {
-      if (this.logger.error) {
-        this.logger.error("knex-ibmi: " + message);
-      }
+    if (this.logger.error) {
+      this.logger.error("knex-ibmi: " + message);
     }
+    throw new Error(message);
   }
 
   printWarn(message: string) {
@@ -199,8 +198,7 @@ class DB2Client extends knex.Client {
           obj.response = { rows: result, rowCount: result.count };
         }
       } catch (err: any) {
-        this.printError(err);
-        throw new Error(err);
+        this.printError(JSON.stringify(err));
       }
     }
 
@@ -298,12 +296,10 @@ interface DB2ConnectionConfig {
   connectionStringParams?: DB2ConnectionParams;
 }
 
-export interface DB2Config {
+export interface DB2Config extends Knex.Config {
   client: any;
   connection: DB2ConnectionConfig;
   pool?: DB2PoolConfig;
-  version?: string;
-  useNullAsDefault?: boolean;
 }
 
 export const DB2Dialect = DB2Client;

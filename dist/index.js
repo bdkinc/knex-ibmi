@@ -271,17 +271,15 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
     const order = this.order();
     const limit = this.limit();
     const { returning } = this.single;
-    const values = Object.values(this.single.update).map((a) => `${a}`).join(", ");
-    const moreWheres = this.grouped.where && this.grouped.where.length > 0 ? this.grouped.where.map((w) => {
-      if (this.single.update.hasOwnProperty(w.column)) return;
-      if (!w.value) return;
-      return `"${w.column}" ${w.not ? "!" : ""}${w.operator} ${w.value}`;
-    }) : [];
-    let selectReturning = returning ? `select ${returning.map((a) => `"${a}"`).join(", ")} from ${this.tableName} where ${Object.entries(this.single.update).map(([key, value]) => `"${key}" = '${value}'`).join(" and ")}${moreWheres.length > 0 && " and "}${moreWheres.join(
-      " and "
-    )}` : "";
-    const sql = withSQL + `update ${this.single.only ? "only " : ""}${this.tableName} set ` + updates.join(", ") + (where ? ` ${where}` : "") + (order ? ` ${order}` : "") + (limit ? ` ${limit}` : "");
-    return { sql, returning, selectReturning };
+    let sql = "";
+    if (returning) {
+      sql += `select ${this.formatter.columnize(this.single.returning)} from FINAL TABLE(`;
+    }
+    sql += withSQL + `update ${this.single.only ? "only " : ""}${this.tableName} set ` + updates.join(", ") + (where ? ` ${where}` : "") + (order ? ` ${order}` : "") + (limit ? ` ${limit}` : "");
+    if (returning) {
+      sql += `)`;
+    }
+    return { sql, returning };
   }
   _returning(method, value, withTrigger) {
     switch (method) {
@@ -348,11 +346,10 @@ var DB2Client = class extends import_knex.knex.Client {
     }
   }
   printError(message) {
-    if (import_node_process.default.env.DEBUG === "true") {
-      if (this.logger.error) {
-        this.logger.error("knex-ibmi: " + message);
-      }
+    if (this.logger.error) {
+      this.logger.error("knex-ibmi: " + message);
     }
+    throw new Error(message);
   }
   printWarn(message) {
     if (import_node_process.default.env.DEBUG === "true") {
@@ -448,8 +445,7 @@ var DB2Client = class extends import_knex.knex.Client {
           obj.response = { rows: result, rowCount: result.count };
         }
       } catch (err) {
-        this.printError(err);
-        throw new Error(err);
+        this.printError(JSON.stringify(err));
       }
     }
     this.printDebug(obj);

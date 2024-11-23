@@ -7,6 +7,7 @@
 This is an external dialect for [knex](https://knexjs.org).
 This library uses the ODBC (as recommended here https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html)
 driver and is only tested on IBMi.
+
 For more information on IBMi OSS here are the [docs](https://ibmi-oss-docs.readthedocs.io/en/latest/README.html)
 
 ## Supported functionality
@@ -43,15 +44,16 @@ const { DB2Dialect } = require("@bdkinc/knex-ibmi");
 const db = knex({
   client: DB2Dialect,
   connection: {
-    host: "localhost",
-    database: "knextest",
-    port: 50000,
-    user: "<user>",
-    password: "<password>",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
-      ALLOWPROCCALLS: 1,
+    host: "localhost", // hostname or ip address of server
+    database: "knextest", // usually named in your odbc.ini connection
+    port: 50000, // default port
+    user: "<user>", // IBMi username
+    password: "<password>", // IBMi password
+    driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
+    connectionStringParams: { // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
+      ALLOWPROCCALLS: 1, 
       CMT: 0,
+      DBQ: 'MYLIB' // library or schema that holds the tables
     },
   },
   pool: {
@@ -77,15 +79,16 @@ import { DB2Dialect } from "@bdkinc/knex-ibmi";
 const db = knex({
   client: DB2Dialect,
   connection: {
-    host: "localhost",
-    database: "knextest",
-    port: 50000,
-    user: "<user>",
-    password: "<password>",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
+    host: "localhost", // hostname or ip address of server
+    database: "knextest", // usually named in your odbc.ini connection
+    port: 50000, // default port
+    user: "<user>", // IBMi username
+    password: "<password>", // IBMi password
+    driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
+    connectionStringParams: { // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
       ALLOWPROCCALLS: 1,
       CMT: 0,
+      DBQ: 'MYLIB' // library or schema that holds the tables
     },
   },
   pool: {
@@ -113,15 +116,16 @@ import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 const config: DB2Config = {
   client: DB2Dialect,
   connection: {
-    host: "localhost",
-    database: "knextest",
-    port: 50000,
-    user: "<user>",
-    password: "<password>",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
+    host: "localhost", // hostname or ip address of server
+    database: "knextest", // usually named in your odbc.ini connection
+    port: 50000, // default port
+    user: "<user>", // IBMi username
+    password: "<password>", // IBMi password
+    driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
+    connectionStringParams: { // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
       ALLOWPROCCALLS: 1,
       CMT: 0,
+      DBQ: 'MYLIB' // library or schema that holds the tables
     },
   },
   pool: {

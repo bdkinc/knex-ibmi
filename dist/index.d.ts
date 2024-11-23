@@ -40,7 +40,6 @@ declare class IBMiQueryCompiler extends QueryCompiler {
     update(): {
         sql: string;
         returning: any;
-        selectReturning: string;
     };
     _returning(method: string, value: any, withTrigger: undefined): string | undefined;
     columnizeWithPrefix(prefix: string, target: any): string;
@@ -94,12 +93,10 @@ interface DB2ConnectionConfig {
     driver: "IBM i Access ODBC Driver" | string;
     connectionStringParams?: DB2ConnectionParams;
 }
-interface DB2Config {
+interface DB2Config extends Knex.Config {
     client: any;
     connection: DB2ConnectionConfig;
     pool?: DB2PoolConfig;
-    version?: string;
-    useNullAsDefault?: boolean;
 }
 declare const DB2Dialect: typeof DB2Client;
 
