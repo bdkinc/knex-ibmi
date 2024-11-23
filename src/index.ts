@@ -25,10 +25,9 @@ class DB2Client extends knex.Client {
       );
     }
 
-    // TODO: Do we need a version number?
-    // if (config.version) {
-    //   this.version = config.version;
-    // }
+    if (config.version) {
+      this.version = config.version;
+    }
 
     if (this.driverName && config.connection) {
       this.initializeDriver();
@@ -181,19 +180,6 @@ class DB2Client extends knex.Client {
             ),
             rowCount: result.count,
           };
-        } else if (method === "update") {
-          if (obj.selectReturning) {
-            const returningSelect = await connection.query(obj.selectReturning);
-            obj.response = {
-              rows: returningSelect,
-              rowCount: result.count,
-            };
-          } else {
-            obj.response = {
-              rows: result,
-              rowCount: result.count,
-            };
-          }
         } else {
           obj.response = { rows: result, rowCount: result.count };
         }
@@ -251,7 +237,7 @@ class DB2Client extends knex.Client {
       case "del":
       case "delete":
       case "update":
-        if (obj.selectReturning) {
+        if (obj.select) {
           return rows;
         }
         return rowCount;

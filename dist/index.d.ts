@@ -36,7 +36,10 @@ declare class IBMiQueryCompiler extends QueryCompiler {
         returning: any;
     };
     _buildInsertData(insertValues: string | any[], returningSql: string): string;
-    _prepInsert(data: any): any;
+    _prepInsert(data: any): {
+        columns: any;
+        values: any;
+    };
     update(): {
         sql: string;
         returning: any;

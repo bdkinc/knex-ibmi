@@ -37,6 +37,8 @@ Requires Node v16 or higher.
 
 This library can be used as commonjs, esm or TypeScript.
 
+### CommonJs
+
 ```javascript
 const knex = require("knex");
 const { DB2Dialect } = require("@bdkinc/knex-ibmi");
@@ -70,13 +72,16 @@ query
   .finally(() => process.exit());
 ```
 
-or as ESM
+### ESM
 
 ```javascript
 import knex from "knex";
 import { DB2Dialect } from "@bdkinc/knex-ibmi";
 
-const db = knex({
+/**
+ * @type {import("@bdkinc/knex-ibmi").DB2Config}
+ */
+const config = {
   client: DB2Dialect,
   connection: {
     host: "localhost", // hostname or ip address of server
@@ -95,7 +100,9 @@ const db = knex({
     min: 2,
     max: 10,
   },
-});
+}
+
+const db = knex(config);
 
 try {
   const data = await db.select("*").from("table").where({ foo: "bar" });
@@ -107,7 +114,7 @@ try {
 }
 ```
 
-or as Typescript
+### TypeScript
 
 ```typescript
 import { knex } from "knex";

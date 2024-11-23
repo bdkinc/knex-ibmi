@@ -4,6 +4,9 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -25,6 +28,17 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// node_modules/lodash/isObject.js
+var require_isObject = __commonJS({
+  "node_modules/lodash/isObject.js"(exports2, module2) {
+    function isObject2(value) {
+      var type = typeof value;
+      return value != null && (type == "object" || type == "function");
+    }
+    module2.exports = isObject2;
+  }
+});
 
 // src/index.ts
 var src_exports = {};
@@ -76,7 +90,7 @@ var ibmi_compiler_default = IBMiSchemaCompiler;
 
 // src/schema/ibmi-tablecompiler.ts
 var import_tablecompiler = __toESM(require("knex/lib/schema/tablecompiler"));
-var import_isObject = __toESM(require("lodash/isObject"));
+var import_isObject = __toESM(require_isObject());
 var IBMiTableCompiler = class extends import_tablecompiler.default {
   createQuery(columns, ifNot, like) {
     let createStatement = ifNot ? `if object_id('${this.tableName()}', 'U') is null ` : "";
@@ -165,10 +179,8 @@ var ibmi_transaction_default = IBMiTransaction;
 
 // src/query/ibmi-querycompiler.ts
 var import_querycompiler = __toESM(require("knex/lib/query/querycompiler"));
-var import_isObject2 = __toESM(require("lodash/isObject"));
 var import_wrappingFormatter = require("knex/lib/formatter/wrappingFormatter");
 var import_date_fns = require("date-fns");
-var import_isEmpty = __toESM(require("lodash/isEmpty"));
 var IBMiQueryCompiler = class extends import_querycompiler.default {
   insert() {
     const insertValues = this.single.insert || [];
@@ -180,7 +192,7 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
       if (insertValues.length === 0) {
         return "";
       }
-    } else if (typeof insertValues === "object" && (0, import_isEmpty.default)(insertValues)) {
+    } else if (typeof insertValues === "object" && Object.keys(insertValues).length === 0) {
       return {
         sql: sql + returningSql + this._emptyInsertValue,
         returning
@@ -211,11 +223,9 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
     return sql;
   }
   _prepInsert(data) {
-    if ((0, import_isObject2.default)(data)) {
-      if (data.hasOwnProperty("migration_time")) {
-        const parsed = new Date(data.migration_time);
-        data.migration_time = (0, import_date_fns.format)(parsed, "yyyy-MM-dd HH:mm:ss");
-      }
+    if (typeof data === "object" && data.migration_time) {
+      const parsed = new Date(data.migration_time);
+      data.migration_time = (0, import_date_fns.format)(parsed, "yyyy-MM-dd HH:mm:ss");
     }
     const isRaw = (0, import_wrappingFormatter.rawOrFn)(
       data,
@@ -320,6 +330,9 @@ var DB2Client = class extends import_knex.knex.Client {
       throw new Error(
         `knex: Required configuration option 'client' is missing.`
       );
+    }
+    if (config.version) {
+      this.version = config.version;
     }
     if (this.driverName && config.connection) {
       this.initializeDriver();
@@ -428,19 +441,6 @@ var DB2Client = class extends import_knex.knex.Client {
             ),
             rowCount: result.count
           };
-        } else if (method === "update") {
-          if (obj.selectReturning) {
-            const returningSelect = await connection.query(obj.selectReturning);
-            obj.response = {
-              rows: returningSelect,
-              rowCount: result.count
-            };
-          } else {
-            obj.response = {
-              rows: result,
-              rowCount: result.count
-            };
-          }
         } else {
           obj.response = { rows: result, rowCount: result.count };
         }
@@ -487,7 +487,7 @@ var DB2Client = class extends import_knex.knex.Client {
       case "del":
       case "delete":
       case "update":
-        if (obj.selectReturning) {
+        if (obj.select) {
           return rows;
         }
         return rowCount;
