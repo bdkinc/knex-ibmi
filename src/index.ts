@@ -209,8 +209,8 @@ class DB2Client extends knex.Client {
     return new ColumnCompiler(this, tableCompiler, columnCompiler);
   }
 
-  queryCompiler(builder: Knex.QueryBuilder) {
-    return new QueryCompiler(this, builder);
+  queryCompiler(builder: Knex.QueryBuilder, bindings?: any[]) {
+    return new QueryCompiler(this, builder, bindings);
   }
 
   processResponse(obj: any, runner: any): any {
