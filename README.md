@@ -48,7 +48,6 @@ const db = knex({
   connection: {
     host: "localhost", // hostname or ip address of server
     database: "*LOCAL", // usually named in your odbc.ini connection
-    port: 50000, // default port
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
     driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
@@ -86,7 +85,6 @@ const config = {
   connection: {
     host: "localhost", // hostname or ip address of server
     database: "*LOCAL", // usually named in your odbc.ini connection
-    port: 50000, // default port
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
     driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
@@ -125,7 +123,6 @@ const config: DB2Config = {
   connection: {
     host: "localhost", // hostname or ip address of server
     database: "*LOCAL", // usually named in your odbc.ini connection
-    port: 50000, // default port
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
     driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
