@@ -63,7 +63,7 @@ declare class DB2Client extends knex.Client {
     schemaCompiler(tableBuilder: any): IBMiSchemaCompiler;
     tableCompiler(tableBuilder: any): IBMiTableCompiler;
     columnCompiler(tableCompiler: any, columnCompiler: any): IBMiColumnCompiler;
-    queryCompiler(builder: Knex.QueryBuilder): IBMiQueryCompiler;
+    queryCompiler(builder: Knex.QueryBuilder, bindings?: any[]): IBMiQueryCompiler;
     processResponse(obj: any, runner: any): any;
 }
 interface DB2PoolConfig {

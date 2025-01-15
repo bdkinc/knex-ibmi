@@ -463,8 +463,8 @@ var DB2Client = class extends import_knex.knex.Client {
   columnCompiler(tableCompiler, columnCompiler) {
     return new ibmi_columncompiler_default(this, tableCompiler, columnCompiler);
   }
-  queryCompiler(builder) {
-    return new ibmi_querycompiler_default(this, builder);
+  queryCompiler(builder, bindings) {
+    return new ibmi_querycompiler_default(this, builder, bindings);
   }
   processResponse(obj, runner) {
     if (obj === null) return null;
