@@ -11,6 +11,8 @@ declare module "knex/lib/execution/transaction" {
     constructor(client: Knex.Client, container: any, config: any, outerTx: any);
     isCompleted: () => boolean;
     begin(conn: any): any;
+    commit(conn: any): any;
+    rollback(conn: any): any;
     savepoint(conn: any): any;
   }
 
