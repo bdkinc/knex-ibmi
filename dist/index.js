@@ -163,16 +163,13 @@ var ibmi_columncompiler_default = IBMiColumnCompiler;
 var import_transaction = __toESM(require("knex/lib/execution/transaction"));
 var IBMiTransaction = class extends import_transaction.default {
   begin(connection) {
-    connection.beginTransaction();
-    return connection;
+    return connection.beginTransaction();
   }
   rollback(connection) {
-    connection.rollback();
-    return connection;
+    return connection.rollback();
   }
   commit(connection) {
-    connection.commit();
-    return connection;
+    return connection.commit();
   }
 };
 var ibmi_transaction_default = IBMiTransaction;

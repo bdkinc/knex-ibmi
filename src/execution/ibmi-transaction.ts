@@ -3,18 +3,15 @@ import { Knex } from "knex";
 
 class IBMiTransaction extends Transaction {
   begin(connection: any): Knex.QueryBuilder<any, any[]> {
-    connection.beginTransaction();
-    return connection;
+    return connection.beginTransaction();
   }
 
   rollback(connection: any): Knex.QueryBuilder<any, any[]> {
-    connection.rollback();
-    return connection;
+    return connection.rollback();
   }
 
   commit(connection: any): Knex.QueryBuilder<any, any[]> {
-    connection.commit();
-    return connection;
+    return connection.commit();
   }
 }
 
