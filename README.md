@@ -156,6 +156,8 @@ try {
 ```typescript
 import { knex } from "knex";
 import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
+import { Transform } from "node:stream";
+import { finished } from "node:stream/promises";
 
 const config: DB2Config = {
   client: DB2Dialect,
@@ -186,8 +188,28 @@ try {
     .from("table")
     .stream({ fetchSize: 1 }); // optional, fetchSize defaults to 1
 
+  // use an objectMode transformer
+  const transform = new Transform({
+    objectMode: true,
+    transform(
+      chunk: any,
+      encoding: BufferEncoding,
+      callback: TransformCallback,
+    ) {
+      // chunk will be an array of objects
+      // the length of the array is the chunk size
+      console.log(chunk);
+      callback(null, chunk);
+    },
+  });
+
+  // pipe through the transformer
+  data.pipe(transform);
+
+  await finished(data); // db queries are promises, we need to wait until resolved
+
+  // or we can iterate through each record one at a time (fetchSize has no effect)
   for await (const record of data) {
-    // returns an array of objects, length of array is determined by fetchSize
     console.log(record);
   }
 } catch (err) {
