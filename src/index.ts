@@ -205,36 +205,32 @@ class DB2Client extends knex.Client {
     if (!obj.sql) throw new Error("A query is required to stream results");
 
     return new Promise(async (resolve, reject) => {
-      stream.on("error", (err: unknown) => {
-        if (err) {
-          connection.__knex__disposed = err;
-        }
-        reject(err);
-      });
+      stream.on("error", reject);
       stream.on("end", resolve);
+
+      const cursor = await connection.query(obj.sql, obj.bindings, {
+        cursor: true,
+        fetchSize: options?.fetchSize || 1,
+      });
 
       const readableStream = new Readable({
         objectMode: true,
         async read() {
-          const cursor = await connection.query(obj.sql, obj.bindings, {
-            cursor: true,
-            fetchSize: options?.fetchSize || 1,
-          });
-
           while (!cursor.noData) {
             const result = await cursor.fetch();
             this.push(result);
           }
 
+          this.push(null);
           await cursor.close();
         },
       });
 
-      readableStream.pipe(stream);
       readableStream.on("error", (err) => {
         reject(err);
         stream.emit("error", err);
       });
+      readableStream.pipe(stream);
     });
   }
 

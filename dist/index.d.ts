@@ -61,7 +61,6 @@ declare class DB2Client extends knex.Client {
     _query(connection: any, obj: any): Promise<any>;
     _stream(connection: any, obj: any, stream: any, options: {
         fetchSize?: number;
-        initialBufferSize?: number;
     }): Promise<unknown>;
     transaction(container: any, config: any, outerTx: any): Knex.Transaction;
     schemaCompiler(tableBuilder: any): IBMiSchemaCompiler;
