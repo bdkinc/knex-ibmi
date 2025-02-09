@@ -1,3 +1,6 @@
+## 0.3.0 - February 9th, 2025
+- add streaming support
+
 ## 0.0.5 - July 23rd, 2023
 - add unique and dropUnique methods
 

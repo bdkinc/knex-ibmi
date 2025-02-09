@@ -313,6 +313,7 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
 var ibmi_querycompiler_default = IBMiQueryCompiler;
 
 // src/index.ts
+var import_node_stream = require("stream");
 var DB2Client = class extends import_knex.knex.Client {
   constructor(config) {
     super(config);
@@ -447,6 +448,38 @@ var DB2Client = class extends import_knex.knex.Client {
     }
     this.printDebug(obj);
     return obj;
+  }
+  _stream(connection, obj, stream, options) {
+    if (!obj.sql) throw new Error("A query is required to stream results");
+    return new Promise(async (resolve, reject) => {
+      stream.on("error", (err) => {
+        if (err) {
+          connection.__knex__disposed = err;
+        }
+        reject(err);
+      });
+      stream.on("end", resolve);
+      const readableStream = new import_node_stream.Readable({
+        objectMode: true,
+        async read() {
+          const cursor = await connection.query(obj.sql, obj.bindings, {
+            cursor: true,
+            fetchSize: options?.fetchSize || 1,
+            ...options
+          });
+          while (!cursor.noData) {
+            const result = await cursor.fetch();
+            this.push(result);
+          }
+          await cursor.close();
+        }
+      });
+      readableStream.pipe(stream);
+      readableStream.on("error", (err) => {
+        reject(err);
+        stream.emit("error", err);
+      });
+    });
   }
   transaction(container, config, outerTx) {
     return new ibmi_transaction_default(this, container, config, outerTx);

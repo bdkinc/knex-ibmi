@@ -6,6 +6,7 @@ import TableCompiler from "./schema/ibmi-tablecompiler";
 import ColumnCompiler from "./schema/ibmi-columncompiler";
 import Transaction from "./execution/ibmi-transaction";
 import QueryCompiler from "./query/ibmi-querycompiler";
+import { Readable } from "node:stream";
 
 class DB2Client extends knex.Client {
   constructor(config: Knex.Config<DB2Config>) {
@@ -191,6 +192,50 @@ class DB2Client extends knex.Client {
     this.printDebug(obj);
 
     return obj;
+  }
+
+  _stream(
+    connection: any,
+    obj: any,
+    stream: any,
+    options: {
+      fetchSize?: number;
+    },
+  ) {
+    if (!obj.sql) throw new Error("A query is required to stream results");
+
+    return new Promise(async (resolve, reject) => {
+      stream.on("error", (err: unknown) => {
+        if (err) {
+          connection.__knex__disposed = err;
+        }
+        reject(err);
+      });
+      stream.on("end", resolve);
+
+      const readableStream = new Readable({
+        objectMode: true,
+        async read() {
+          const cursor = await connection.query(obj.sql, obj.bindings, {
+            cursor: true,
+            fetchSize: options?.fetchSize || 1,
+          });
+
+          while (!cursor.noData) {
+            const result = await cursor.fetch();
+            this.push(result);
+          }
+
+          await cursor.close();
+        },
+      });
+
+      readableStream.pipe(stream);
+      readableStream.on("error", (err) => {
+        reject(err);
+        stream.emit("error", err);
+      });
+    });
   }
 
   transaction(container: any, config: any, outerTx: any): Knex.Transaction {

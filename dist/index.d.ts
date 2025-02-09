@@ -59,6 +59,10 @@ declare class DB2Client extends knex.Client {
     destroyRawConnection(connection: any): Promise<any>;
     _getConnectionString(connectionConfig: DB2ConnectionConfig): string;
     _query(connection: any, obj: any): Promise<any>;
+    _stream(connection: any, obj: any, stream: any, options: {
+        fetchSize?: number;
+        initialBufferSize?: number;
+    }): Promise<unknown>;
     transaction(container: any, config: any, outerTx: any): Knex.Transaction;
     schemaCompiler(tableBuilder: any): IBMiSchemaCompiler;
     tableCompiler(tableBuilder: any): IBMiTableCompiler;
@@ -86,6 +90,7 @@ interface DB2ConnectionParams {
     DECFLOATROUNDMODE?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
     MAPDECIMALFLOATDESCRIBE?: 1 | 3;
     ALLOWPROCCALLS?: 0 | 1;
+    XDYNAMIC?: 0 | 1;
 }
 interface DB2ConnectionConfig {
     database: string;
