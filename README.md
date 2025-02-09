@@ -13,14 +13,12 @@ For more information on IBMi OSS here are the [docs](https://ibmi-oss-docs.readt
 ## Supported functionality
 
 - Query building
-- Query execution (see [Limitations](#Limitations))
+- Query execution
 - Transactions
-
-## Limitations
-
-- No streaming support
+- Streaming
 
 ## Installation
+
 ```
 npm install --save odbc knex @bdkinc/knex-ibmi
 ```
@@ -29,7 +27,7 @@ Requires Node v16 or higher.
 
 ## Dependencies
 
-`npm install odbc` see [odbc](https://github.com/markdirish/node-odbc)
+`npm install odbc` see [odbc](https://github.com/IBM/node-odbc)
 
 `npm install knex` see [knex](https://github.com/tgriesser/knex)
 
@@ -51,10 +49,11 @@ const db = knex({
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
     driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
-    connectionStringParams: { // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
-      ALLOWPROCCALLS: 1, 
+    connectionStringParams: {
+      // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
+      ALLOWPROCCALLS: 1,
       CMT: 0,
-      DBQ: 'MYLIB' // library or schema that holds the tables
+      DBQ: "MYLIB", // library or schema that holds the tables
     },
   },
   pool: {
@@ -88,17 +87,18 @@ const config = {
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
     driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
-    connectionStringParams: { // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
+    connectionStringParams: {
+      // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
       ALLOWPROCCALLS: 1,
       CMT: 0,
-      DBQ: 'MYLIB' // library or schema that holds the tables
+      DBQ: "MYLIB", // library or schema that holds the tables
     },
   },
   pool: {
     min: 2,
     max: 10,
   },
-}
+};
 
 const db = knex(config);
 
@@ -126,10 +126,11 @@ const config: DB2Config = {
     user: "<user>", // IBMi username
     password: "<password>", // IBMi password
     driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
-    connectionStringParams: { // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
+    connectionStringParams: {
+      // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
       ALLOWPROCCALLS: 1,
       CMT: 0,
-      DBQ: 'MYLIB' // library or schema that holds the tables
+      DBQ: "MYLIB", // library or schema that holds the tables
     },
   },
   pool: {
@@ -145,6 +146,52 @@ try {
   console.log(data);
 } catch (err) {
   throw new Error(err);
+} finally {
+  process.exit();
+}
+```
+
+### Streaming example
+
+```typescript
+import { knex } from "knex";
+import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
+
+const config: DB2Config = {
+  client: DB2Dialect,
+  connection: {
+    host: "localhost", // hostname or ip address of server
+    database: "*LOCAL", // usually named in your odbc.ini connection
+    user: "<user>", // IBMi username
+    password: "<password>", // IBMi password
+    driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
+    connectionStringParams: {
+      // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+      DBQ: "MYLIB", // library or schema that holds the tables
+    },
+  },
+  pool: {
+    min: 2,
+    max: 10,
+  },
+};
+
+const db = knex(config);
+
+try {
+  const data = await db
+    .select("*")
+    .from("table")
+    .stream({ fetchSize: 1 }); // optional, fetchSize defaults to 1
+
+  for await (const record of data) {
+    // returns an array of objects, length of array is determined by fetchSize
+    console.log(record);
+  }
+} catch (err) {
+  throw err;
 } finally {
   process.exit();
 }
