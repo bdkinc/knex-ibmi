@@ -208,7 +208,7 @@ try {
 
   await finished(data); // db queries are promises, we need to wait until resolved
 
-  // or we can iterate through each record one at a time (fetchSize has no effect)
+  // or we can iterate through each record
   for await (const record of data) {
     console.log(record);
   }
