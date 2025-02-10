@@ -469,6 +469,7 @@ var DB2Client = class extends import_knex.knex.Client {
             if (!cursor.noData) {
               this.push(result);
             } else {
+              this.push(null);
               cursor.close((error2) => {
                 if (error2) {
                   console.log(error2);
