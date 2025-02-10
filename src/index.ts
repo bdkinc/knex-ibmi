@@ -194,7 +194,7 @@ class DB2Client extends knex.Client {
     return obj;
   }
 
-  _stream(
+  async _stream(
     connection: any,
     obj: any,
     stream: any,
@@ -215,14 +215,24 @@ class DB2Client extends knex.Client {
 
       const readableStream = new Readable({
         objectMode: true,
-        async read() {
-          while (!cursor.noData) {
-            const result = await cursor.fetch();
-            this.push(result);
-          }
-
-          this.push(null);
-          await cursor.close();
+        read() {
+          cursor.fetch((error: unknown, result: unknown) => {
+            if (error) {
+              console.log(error);
+              return;
+            }
+            if (!cursor.noData) {
+              this.push(result);
+            } else {
+              this.push(null);
+              cursor.close((error2: unknown) => {
+                if (error2) {
+                  console.log(error2);
+                  return;
+                }
+              });
+            }
+          });
         },
       });
 
