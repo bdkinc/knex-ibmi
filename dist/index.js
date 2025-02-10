@@ -449,7 +449,7 @@ var DB2Client = class extends import_knex.knex.Client {
     this.printDebug(obj);
     return obj;
   }
-  _stream(connection, obj, stream, options) {
+  async _stream(connection, obj, stream, options) {
     if (!obj.sql) throw new Error("A query is required to stream results");
     return new Promise(async (resolve, reject) => {
       stream.on("error", reject);
@@ -460,13 +460,23 @@ var DB2Client = class extends import_knex.knex.Client {
       });
       const readableStream = new import_node_stream.Readable({
         objectMode: true,
-        async read() {
-          while (!cursor.noData) {
-            const result = await cursor.fetch();
-            this.push(result);
-          }
-          this.push(null);
-          await cursor.close();
+        read() {
+          cursor.fetch((error, result) => {
+            if (error) {
+              console.log(error);
+              return;
+            }
+            if (!cursor.noData) {
+              this.push(result);
+            } else {
+              cursor.close((error2) => {
+                if (error2) {
+                  console.log(error2);
+                  return;
+                }
+              });
+            }
+          });
         }
       });
       readableStream.on("error", (err) => {
