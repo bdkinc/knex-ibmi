@@ -1,6 +1,6 @@
 import process from "node:process";
 import { knex, Knex } from "knex";
-import odbc from "odbc";
+import odbc, { Connection } from "odbc";
 import SchemaCompiler from "./schema/ibmi-compiler";
 import TableCompiler from "./schema/ibmi-tablecompiler";
 import ColumnCompiler from "./schema/ibmi-columncompiler";
@@ -195,8 +195,8 @@ class DB2Client extends knex.Client {
   }
 
   async _stream(
-    connection: any,
-    obj: any,
+    connection: Connection,
+    obj: { sql: string; bindings: any[] },
     stream: any,
     options: {
       fetchSize?: number;
@@ -224,7 +224,6 @@ class DB2Client extends knex.Client {
             if (!cursor.noData) {
               this.push(result);
             } else {
-              this.push(null);
               cursor.close((error2: unknown) => {
                 if (error2) {
                   console.log(error2);
