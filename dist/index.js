@@ -451,40 +451,48 @@ var DB2Client = class extends import_knex.knex.Client {
   }
   async _stream(connection, obj, stream, options) {
     if (!obj.sql) throw new Error("A query is required to stream results");
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       stream.on("error", reject);
       stream.on("end", resolve);
-      const cursor = await connection.query(obj.sql, obj.bindings, {
-        cursor: true,
-        fetchSize: options?.fetchSize || 1
-      });
-      const readableStream = new import_node_stream.Readable({
-        objectMode: true,
-        read() {
-          cursor.fetch((error, result) => {
-            if (error) {
-              console.log(error);
-              return;
-            }
-            if (!cursor.noData) {
-              this.push(result);
-            } else {
-              result && Array.isArray(result) ? this.push(result) : this.push(null);
-              cursor.close((error2) => {
+      connection.query(
+        obj.sql,
+        obj.bindings,
+        {
+          cursor: true,
+          fetchSize: options?.fetchSize || 1
+        },
+        (error, cursor) => {
+          const printError = this.printError;
+          if (error) {
+            this.printError(JSON.stringify(error, null, 2));
+          }
+          const readableStream = new import_node_stream.Readable({
+            objectMode: true,
+            read() {
+              cursor.fetch((error2, result) => {
                 if (error2) {
-                  console.log(error2);
-                  return;
+                  printError(JSON.stringify(error2, null, 2));
+                }
+                if (!cursor.noData) {
+                  this.push(result);
+                } else {
+                  this.push(null);
+                  cursor.close((error3) => {
+                    if (error3) {
+                      printError(JSON.stringify(error3, null, 2));
+                    }
+                  });
                 }
               });
             }
           });
+          readableStream.on("error", (err) => {
+            reject(err);
+            stream.emit("error", err);
+          });
+          readableStream.pipe(stream);
         }
-      });
-      readableStream.on("error", (err) => {
-        reject(err);
-        stream.emit("error", err);
-      });
-      readableStream.pipe(stream);
+      );
     });
   }
   transaction(container, config, outerTx) {
