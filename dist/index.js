@@ -462,7 +462,6 @@ var DB2Client = class extends import_knex.knex.Client {
           fetchSize: options?.fetchSize || 1
         },
         (error, cursor) => {
-          const printError = this.printError;
           if (error) {
             this.printError(JSON.stringify(error, null, 2));
           }
@@ -471,15 +470,17 @@ var DB2Client = class extends import_knex.knex.Client {
             read() {
               cursor.fetch((error2, result) => {
                 if (error2) {
-                  printError(JSON.stringify(error2, null, 2));
+                  console.log(JSON.stringify(error2, null, 2));
                 }
                 if (!cursor.noData) {
                   this.push(result);
                 } else {
-                  this.push(null);
                   cursor.close((error3) => {
                     if (error3) {
-                      printError(JSON.stringify(error3, null, 2));
+                      console.log(JSON.stringify(error3, null, 2));
+                    }
+                    if (result) {
+                      this.push(result);
                     }
                   });
                 }
