@@ -224,7 +224,9 @@ class DB2Client extends knex.Client {
             if (!cursor.noData) {
               this.push(result);
             } else {
-              this.push(result);
+              result && Array.isArray(result)
+                ? this.push(result)
+                : this.push(null);
               cursor.close((error2: unknown) => {
                 if (error2) {
                   console.log(error2);
