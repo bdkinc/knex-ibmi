@@ -66,7 +66,6 @@ class DB2Client extends knex.Client {
     if (this.logger.error) {
       this.logger.error("knex-ibmi: " + message);
     }
-    throw new Error(message);
   }
 
   printWarn(message: string) {
