@@ -360,7 +360,6 @@ var DB2Client = class extends import_knex.knex.Client {
     if (this.logger.error) {
       this.logger.error("knex-ibmi: " + message);
     }
-    throw new Error(message);
   }
   printWarn(message) {
     if (import_node_process.default.env.DEBUG === "true") {
