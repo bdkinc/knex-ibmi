@@ -205,17 +205,13 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
   _buildInsertData(insertValues, returningSql) {
     let sql = "";
     const insertData = this._prepInsert(insertValues);
-    if (typeof insertData === "string") {
-      sql += insertData;
+    if (insertData.columns.length) {
+      sql += `(${this.formatter.columnize(insertData.columns)}`;
+      sql += `) ${returningSql}values (` + this._buildInsertValues(insertData) + ")";
+    } else if (insertValues.length === 1 && insertValues[0]) {
+      sql += returningSql + this._emptyInsertValue;
     } else {
-      if (insertData.columns.length) {
-        sql += `(${this.formatter.columnize(insertData.columns)}`;
-        sql += `) ${returningSql}values (` + this._buildInsertValues(insertData) + ")";
-      } else if (insertValues.length === 1 && insertValues[0]) {
-        sql += returningSql + this._emptyInsertValue;
-      } else {
-        return "";
-      }
+      return "";
     }
     return sql;
   }
@@ -280,6 +276,7 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
     const { returning } = this.single;
     let sql = "";
     if (returning) {
+      console.error("IBMi DB2 does not support returning in update statements, only inserts");
       sql += `select ${this.formatter.columnize(this.single.returning)} from FINAL TABLE(`;
     }
     sql += withSQL + `update ${this.single.only ? "only " : ""}${this.tableName} set ` + updates.join(", ") + (where ? ` ${where}` : "") + (order ? ` ${order}` : "") + (limit ? ` ${limit}` : "");
@@ -412,41 +409,60 @@ var DB2Client = class extends import_knex.knex.Client {
   }
   // Runs the query on the specified connection, providing the bindings
   async _query(connection, obj) {
-    if (!obj || typeof obj == "string") {
-      obj = { sql: obj };
-    }
-    const method = (obj.hasOwnProperty("method") && obj.method !== "raw" ? obj.method : obj.sql.split(" ")[0]).toLowerCase();
-    obj.sqlMethod = method;
-    if (method === "select" || method === "first" || method === "pluck") {
-      const rows = await connection.query(obj.sql, obj.bindings);
-      if (rows) {
-        obj.response = { rows, rowCount: rows.length };
-      }
+    const queryObject = this.normalizeQueryObject(obj);
+    const method = this.determineQueryMethod(queryObject);
+    queryObject.sqlMethod = method;
+    if (this.isSelectMethod(method)) {
+      await this.executeSelectQuery(connection, queryObject);
     } else {
-      try {
-        const statement = await connection.createStatement();
-        await statement.prepare(obj.sql);
-        if (obj.bindings) {
-          await statement.bind(obj.bindings);
-        }
-        const result = await statement.execute();
-        this.printDebug(result);
-        if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
-          obj.response = {
-            rows: result.map(
-              (row) => result.columns && result.columns?.length > 0 ? row[result.columns[0].name] : row
-            ),
-            rowCount: result.count
-          };
-        } else {
-          obj.response = { rows: result, rowCount: result.count };
-        }
-      } catch (err) {
-        this.printError(JSON.stringify(err));
-      }
+      await this.executeStatementQuery(connection, queryObject);
     }
-    this.printDebug(obj);
+    this.printDebug(queryObject);
+    return queryObject;
+  }
+  normalizeQueryObject(obj) {
+    if (!obj || typeof obj === "string") {
+      return { sql: obj };
+    }
     return obj;
+  }
+  determineQueryMethod(obj) {
+    return (obj.hasOwnProperty("method") && obj.method !== "raw" ? obj.method : obj.sql.split(" ")[0]).toLowerCase();
+  }
+  isSelectMethod(method) {
+    return method === "select" || method === "first" || method === "pluck";
+  }
+  async executeSelectQuery(connection, obj) {
+    const rows = await connection.query(obj.sql, obj.bindings);
+    if (rows) {
+      obj.response = { rows, rowCount: rows.length };
+    }
+  }
+  async executeStatementQuery(connection, obj) {
+    try {
+      const statement = await connection.createStatement();
+      await statement.prepare(obj.sql);
+      if (obj.bindings) {
+        await statement.bind(obj.bindings);
+      }
+      const result = await statement.execute();
+      this.printDebug(String(result));
+      obj.response = this.formatStatementResponse(result);
+    } catch (err) {
+      this.printError(JSON.stringify(err));
+    }
+  }
+  formatStatementResponse(result) {
+    if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
+      return {
+        rows: result.map(
+          (row) => result.columns && result.columns?.length > 0 ? row[result.columns[0].name] : row
+        ),
+        rowCount: result.count
+      };
+    } else {
+      return { rows: result, rowCount: result.count };
+    }
   }
   async _stream(connection, obj, stream, options) {
     if (!obj.sql) throw new Error("A query is required to stream results");
@@ -463,29 +479,9 @@ var DB2Client = class extends import_knex.knex.Client {
         (error, cursor) => {
           if (error) {
             this.printError(JSON.stringify(error, null, 2));
+            return;
           }
-          const readableStream = new import_node_stream.Readable({
-            objectMode: true,
-            read() {
-              cursor.fetch((error2, result) => {
-                if (error2) {
-                  console.log(JSON.stringify(error2, null, 2));
-                }
-                if (!cursor.noData) {
-                  this.push(result);
-                } else {
-                  cursor.close((error3) => {
-                    if (error3) {
-                      console.log(JSON.stringify(error3, null, 2));
-                    }
-                    if (result) {
-                      this.push(result);
-                    }
-                  });
-                }
-              });
-            }
-          });
+          const readableStream = this._createCursorStream(cursor);
           readableStream.on("error", (err) => {
             reject(err);
             stream.emit("error", err);
@@ -493,6 +489,32 @@ var DB2Client = class extends import_knex.knex.Client {
           readableStream.pipe(stream);
         }
       );
+    });
+  }
+  _createCursorStream(cursor) {
+    const parentThis = this;
+    return new import_node_stream.Readable({
+      objectMode: true,
+      read() {
+        cursor.fetch((error, result) => {
+          if (error) {
+            parentThis.printError(JSON.stringify(error, null, 2));
+          }
+          if (!cursor.noData) {
+            this.push(result);
+          } else {
+            cursor.close((closeError) => {
+              if (closeError) {
+                parentThis.printError(JSON.stringify(closeError, null, 2));
+              }
+              if (result) {
+                this.push(result);
+              }
+              this.push(null);
+            });
+          }
+        });
+      }
     });
   }
   transaction(container, config, outerTx) {
@@ -512,30 +534,40 @@ var DB2Client = class extends import_knex.knex.Client {
   }
   processResponse(obj, runner) {
     if (obj === null) return null;
-    const resp = obj.response;
-    const method = obj.sqlMethod;
-    if (!resp) {
-      this.printDebug("response undefined" + obj);
+    const validationResult = this.validateResponse(obj);
+    if (validationResult !== null) return validationResult;
+    const { response } = obj;
+    if (obj.output) {
+      return obj.output(runner, response);
     }
-    const { rows, rowCount } = resp;
-    if (obj.output) return obj.output.call(runner, resp);
-    switch (method) {
-      case "select":
+    return this.processSqlMethod(obj);
+  }
+  validateResponse(obj) {
+    if (!obj.response) {
+      this.printDebug("response undefined" + obj);
+      return void 0;
+    }
+    if (!obj.response.rows) {
+      return this.printError("rows undefined" + obj);
+    }
+    return null;
+  }
+  processSqlMethod(obj) {
+    const { rows, rowCount } = obj.response;
+    switch (obj.sqlMethod) {
+      case "select" /* SELECT */:
         return rows;
-      case "pluck":
+      case "pluck" /* PLUCK */:
         return rows.map(obj.pluck);
-      case "first":
+      case "first" /* FIRST */:
         return rows[0];
-      case "insert":
+      case "insert" /* INSERT */:
         return rows;
-      case "del":
-      case "delete":
-      case "update":
-        if (obj.select) {
-          return rows;
-        }
-        return rowCount;
-      case "counter":
+      case "del" /* DELETE */:
+      case "delete" /* DELETE_ALT */:
+      case "update" /* UPDATE */:
+        return obj.select ? rows : rowCount;
+      case "counter" /* COUNTER */:
         return rowCount;
       default:
         return rows;

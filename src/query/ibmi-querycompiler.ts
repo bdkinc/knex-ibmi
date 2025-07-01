@@ -51,20 +51,16 @@ class IBMiQueryCompiler extends QueryCompiler {
     let sql = "";
     const insertData = this._prepInsert(insertValues);
 
-    if (typeof insertData === "string") {
-      sql += insertData;
+    if (insertData.columns.length) {
+      sql += `(${this.formatter.columnize(insertData.columns)}`;
+      sql +=
+        `) ${returningSql}values (` +
+        this._buildInsertValues(insertData) +
+        ")";
+    } else if (insertValues.length === 1 && insertValues[0]) {
+      sql += returningSql + this._emptyInsertValue;
     } else {
-      if (insertData.columns.length) {
-        sql += `(${this.formatter.columnize(insertData.columns)}`;
-        sql +=
-          `) ${returningSql}values (` +
-          this._buildInsertValues(insertData) +
-          ")";
-      } else if (insertValues.length === 1 && insertValues[0]) {
-        sql += returningSql + this._emptyInsertValue;
-      } else {
-        return "";
-      }
+      return "";
     }
 
     return sql;
@@ -146,6 +142,7 @@ class IBMiQueryCompiler extends QueryCompiler {
     let sql = "";
 
     if (returning) {
+      console.error("IBMi DB2 does not support returning in update statements, only inserts");
       sql += `select ${this.formatter.columnize(this.single.returning)} from FINAL TABLE(`;
     }
 

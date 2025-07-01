@@ -10,8 +10,7 @@ class IBMiSchemaCompiler extends SchemaCompiler {
     );
     const bindings = [tableName];
     let sql =
-      `select TABLE_NAME from QSYS2.SYSTABLES ` +
-      `where TYPE = 'T' and TABLE_NAME = ${formattedTable}`;
+      `select TABLE_NAME from QSYS2.SYSTABLES where TYPE = 'T' and TABLE_NAME = ${formattedTable}`;
 
     if (this.schema) {
       sql += " and TABLE_SCHEMA = ?";
