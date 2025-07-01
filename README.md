@@ -248,3 +248,16 @@ If that still doesn't work, then unixodbc is probably looking for the config fil
 A common case is that the configs are in `/etc` but your system expects them to be somewhere else.
 In such a case, override the path unixodbc looks in via the `ODBCSYSINI` and `ODBCINI` environment variables.
 E.g., `ODBCINI=/etc ODBCSYSINI=/etc`.
+
+## Bundling with Vite
+If you are bundling your application with Vite, then you will need to add this to your config.
+
+```javascript
+// vite.config.js
+
+export default {
+  optimizeDeps: {
+    exclude: ["@mapbox"],
+  }
+}
+```

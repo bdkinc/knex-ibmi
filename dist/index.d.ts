@@ -48,6 +48,26 @@ declare class IBMiQueryCompiler extends QueryCompiler {
     columnizeWithPrefix(prefix: string, target: any): string;
 }
 
+interface QueryObject {
+    response?: {
+        rows: any[];
+        rowCount: number;
+    };
+    sqlMethod: SqlMethod;
+    output?: (runner: any, response: any) => any;
+    pluck?: (row: any) => any;
+    select?: boolean;
+}
+declare enum SqlMethod {
+    SELECT = "select",
+    PLUCK = "pluck",
+    FIRST = "first",
+    INSERT = "insert",
+    DELETE = "del",
+    DELETE_ALT = "delete",
+    UPDATE = "update",
+    COUNTER = "counter"
+}
 declare class DB2Client extends knex.Client {
     constructor(config: Knex.Config<DB2Config>);
     _driver(): typeof odbc;
@@ -58,19 +78,28 @@ declare class DB2Client extends knex.Client {
     acquireRawConnection(): Promise<any>;
     destroyRawConnection(connection: any): Promise<any>;
     _getConnectionString(connectionConfig: DB2ConnectionConfig): string;
-    _query(connection: any, obj: any): Promise<any>;
+    _query(connection: Connection, obj: any): Promise<any>;
+    private normalizeQueryObject;
+    private determineQueryMethod;
+    private isSelectMethod;
+    private executeSelectQuery;
+    private executeStatementQuery;
+    private formatStatementResponse;
     _stream(connection: Connection, obj: {
         sql: string;
         bindings: any[];
     }, stream: any, options: {
         fetchSize?: number;
     }): Promise<unknown>;
+    private _createCursorStream;
     transaction(container: any, config: any, outerTx: any): Knex.Transaction;
     schemaCompiler(tableBuilder: any): IBMiSchemaCompiler;
     tableCompiler(tableBuilder: any): IBMiTableCompiler;
     columnCompiler(tableCompiler: any, columnCompiler: any): IBMiColumnCompiler;
     queryCompiler(builder: Knex.QueryBuilder, bindings?: any[]): IBMiQueryCompiler;
-    processResponse(obj: any, runner: any): any;
+    processResponse(obj: QueryObject | null, runner: any): any;
+    private validateResponse;
+    private processSqlMethod;
 }
 interface DB2PoolConfig {
     min?: number;
@@ -91,8 +120,20 @@ interface DB2ConnectionParams {
     DECFLOATERROROPTION?: 0 | 1;
     DECFLOATROUNDMODE?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
     MAPDECIMALFLOATDESCRIBE?: 1 | 3;
+    TFT?: 0 | 1 | 2 | 3 | 4;
+    TSP?: 0 | 1 | 2 | 3;
+    TSFT?: 0 | 1;
+    XMLCURIMPPARSE?: 0 | 1;
+    XMLDECLARATION?: 1 | 2 | 3 | 4;
     ALLOWPROCCALLS?: 0 | 1;
     XDYNAMIC?: 0 | 1;
+    DFTPKGLIB?: string;
+    PKG?: 0 | 1 | 2;
+    BLOCKFETCH?: 0 | 1;
+    COMPRESSION?: 0 | 1;
+    CONCURRENCY?: 0 | 1;
+    CURSORSENSITIVITY?: 0 | 1 | 2;
+    EXTCOLINFO?: "SQL_DESC_AUTO_UNIQUE_VALUE" | "SQL_DESC_BASE_COLUMN_NAME" | "SQL_DESC_BASE_TABLE_NAME and SQL_DESC_TABLE_NAME" | "SQL_DESC_LABEL" | "SQL_DESC_SCHEMA_NAME" | "SQL_DESC_SEARCHABLE" | "SQL_DESC_UNNAMED" | "SQL_DESC_UPDATABLE";
 }
 interface DB2ConnectionConfig {
     database: string;
