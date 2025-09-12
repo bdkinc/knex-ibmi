@@ -2,33 +2,27 @@ import SchemaCompiler from "knex/lib/schema/compiler";
 
 class IBMiSchemaCompiler extends SchemaCompiler {
   hasTable(tableName: any) {
-    // @ts-expect-error
-    const formattedTable = this.client.parameter(
-      prefixedTableName(this.schema, tableName),
-      this.builder,
-      this.bindingsHolder,
-    );
-    const bindings = [tableName];
-    let sql =
-      `select TABLE_NAME from QSYS2.SYSTABLES where TYPE = 'T' and TABLE_NAME = ${formattedTable}`;
+    // DB2 on IBM i folds unquoted identifiers to uppercase. Use case-insensitive check.
+    const formattedTable = "?";
+    const bindings = [String(tableName).toUpperCase()];
+    let sql = `select TABLE_NAME from QSYS2.SYSTABLES where TYPE = 'T' and UPPER(TABLE_NAME) = ${formattedTable}`;
 
     if (this.schema) {
-      sql += " and TABLE_SCHEMA = ?";
-      bindings.push(this.schema);
+      sql += " and UPPER(TABLE_SCHEMA) = ?";
+      bindings.push(String(this.schema).toUpperCase());
     }
 
     this.pushQuery({
       sql,
       bindings,
-      output: (resp: { rowCount: number; }) => {
+      output: (resp: { rowCount: number }) => {
         return resp.rowCount > 0;
       },
     });
   }
 
   toSQL() {
-    // @ts-expect-error
-    const sequence = this.builder._sequence;
+    const sequence = (this.builder as any)._sequence as any[];
 
     for (let i = 0, l = sequence.length; i < l; i++) {
       const query = sequence[i];
