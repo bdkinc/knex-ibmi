@@ -32,7 +32,8 @@ npm install @bdkinc/knex-ibmi knex odbc
 import knex from "knex";
 import { DB2Dialect } from "@bdkinc/knex-ibmi";
 
-const db = knex({
+/** @type {import("@bdkinc/knex-ibmi").DB2Config} */
+const config = {
   client: DB2Dialect,
   connection: {
     host: "your-ibm-i-host",
@@ -43,7 +44,9 @@ const db = knex({
     connectionStringParams: { DBQ: "MYLIB" },
   },
   pool: { min: 2, max: 10 },
-});
+};
+
+const db = knex(config);
 
 try {
   const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
