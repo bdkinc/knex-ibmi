@@ -15,10 +15,10 @@ declare class IBMiTableCompiler extends TableCompiler {
         sql: any[];
     }, ifNot: any, like: any): void;
     dropUnique(columns: string[], indexName: any): void;
-    unique(columns: string[], indexName: {
-        indexName: any;
-        deferrable: any;
-        predicate: any;
+    unique(columns: string[], indexName: string | {
+        indexName?: string;
+        deferrable?: string;
+        predicate?: any;
     }): void;
     addColumns(columns: any, prefix: any): void;
     commit(connection: Connection): Promise<void>;
@@ -31,10 +31,14 @@ declare class IBMiColumnCompiler extends ColumnCompiler {
 }
 
 declare class IBMiQueryCompiler extends QueryCompiler {
+    private formatTimestampLocal;
     insert(): "" | {
         sql: string;
         returning: any;
     };
+    private isEmptyInsertValues;
+    private isEmptyObject;
+    private buildEmptyInsertResult;
     _buildInsertData(insertValues: string | any[], returningSql: string): string;
     _prepInsert(data: any): {
         columns: any;
@@ -44,8 +48,15 @@ declare class IBMiQueryCompiler extends QueryCompiler {
         sql: string;
         returning: any;
     };
-    _returning(method: string, value: any, withTrigger: undefined): string | undefined;
-    columnizeWithPrefix(prefix: string, target: any): string;
+    /**
+     * Handle returning clause for IBMi DB2 queries
+     * Note: IBMi DB2 has limited support for RETURNING clauses
+     * @param method - The SQL method (insert, update, delete)
+     * @param value - The returning value
+     * @param withTrigger - Trigger support (currently unused)
+     */
+    _returning(method: string, value: any, withTrigger: undefined): string;
+    columnizeWithPrefix(prefix: string, target: string | string[]): string;
 }
 
 interface QueryObject {
@@ -71,7 +82,7 @@ declare enum SqlMethod {
 declare class DB2Client extends knex.Client {
     constructor(config: Knex.Config<DB2Config>);
     _driver(): typeof odbc;
-    wrapIdentifierImpl(value: any): any;
+    wrapIdentifierImpl(value: string): string;
     printDebug(message: string): void;
     printError(message: string): void;
     printWarn(message: string): void;
@@ -84,6 +95,10 @@ declare class DB2Client extends knex.Client {
     private isSelectMethod;
     private executeSelectQuery;
     private executeStatementQuery;
+    /**
+     * Format statement response from ODBC driver
+     * Handles special case for IDENTITY_VAL_LOCAL() function
+     */
     private formatStatementResponse;
     _stream(connection: Connection, obj: {
         sql: string;
@@ -134,11 +149,12 @@ interface DB2ConnectionParams {
     CONCURRENCY?: 0 | 1;
     CURSORSENSITIVITY?: 0 | 1 | 2;
     EXTCOLINFO?: "SQL_DESC_AUTO_UNIQUE_VALUE" | "SQL_DESC_BASE_COLUMN_NAME" | "SQL_DESC_BASE_TABLE_NAME and SQL_DESC_TABLE_NAME" | "SQL_DESC_LABEL" | "SQL_DESC_SCHEMA_NAME" | "SQL_DESC_SEARCHABLE" | "SQL_DESC_UNNAMED" | "SQL_DESC_UPDATABLE";
+    TRUEAUTOCOMMIT?: 0 | 1;
 }
 interface DB2ConnectionConfig {
     database: string;
     host: string;
-    port: 50000 | number;
+    port: 8471 | 9471 | number;
     user: string;
     password: string;
     driver: "IBM i Access ODBC Driver" | string;

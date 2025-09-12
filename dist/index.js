@@ -4,9 +4,6 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -29,24 +26,13 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// node_modules/lodash/isObject.js
-var require_isObject = __commonJS({
-  "node_modules/lodash/isObject.js"(exports2, module2) {
-    function isObject2(value) {
-      var type = typeof value;
-      return value != null && (type == "object" || type == "function");
-    }
-    module2.exports = isObject2;
-  }
-});
-
 // src/index.ts
-var src_exports = {};
-__export(src_exports, {
+var index_exports = {};
+__export(index_exports, {
   DB2Dialect: () => DB2Dialect,
-  default: () => src_default
+  default: () => index_default
 });
-module.exports = __toCommonJS(src_exports);
+module.exports = __toCommonJS(index_exports);
 var import_node_process = __toESM(require("process"));
 var import_knex = require("knex");
 var import_odbc = __toESM(require("odbc"));
@@ -55,16 +41,12 @@ var import_odbc = __toESM(require("odbc"));
 var import_compiler = __toESM(require("knex/lib/schema/compiler"));
 var IBMiSchemaCompiler = class extends import_compiler.default {
   hasTable(tableName) {
-    const formattedTable = this.client.parameter(
-      prefixedTableName(this.schema, tableName),
-      this.builder,
-      this.bindingsHolder
-    );
-    const bindings = [tableName];
-    let sql = `select TABLE_NAME from QSYS2.SYSTABLES where TYPE = 'T' and TABLE_NAME = ${formattedTable}`;
+    const formattedTable = "?";
+    const bindings = [String(tableName).toUpperCase()];
+    let sql = `select TABLE_NAME from QSYS2.SYSTABLES where TYPE = 'T' and UPPER(TABLE_NAME) = ${formattedTable}`;
     if (this.schema) {
-      sql += " and TABLE_SCHEMA = ?";
-      bindings.push(this.schema);
+      sql += " and UPPER(TABLE_SCHEMA) = ?";
+      bindings.push(String(this.schema).toUpperCase());
     }
     this.pushQuery({
       sql,
@@ -83,14 +65,10 @@ var IBMiSchemaCompiler = class extends import_compiler.default {
     return this.sequence;
   }
 };
-function prefixedTableName(prefix, table) {
-  return prefix ? `${prefix}.${table}` : table;
-}
 var ibmi_compiler_default = IBMiSchemaCompiler;
 
 // src/schema/ibmi-tablecompiler.ts
 var import_tablecompiler = __toESM(require("knex/lib/schema/tablecompiler"));
-var import_isObject = __toESM(require_isObject());
 var IBMiTableCompiler = class extends import_tablecompiler.default {
   createQuery(columns, ifNot, like) {
     let createStatement = ifNot ? `if object_id('${this.tableName()}', 'U') is null ` : "";
@@ -114,21 +92,24 @@ var IBMiTableCompiler = class extends import_tablecompiler.default {
   unique(columns, indexName) {
     let deferrable = "";
     let predicate;
-    if ((0, import_isObject.default)(indexName)) {
-      deferrable = indexName.deferrable;
+    let finalIndexName;
+    if (typeof indexName === "object" && indexName !== null) {
+      deferrable = indexName.deferrable || "";
       predicate = indexName.predicate;
-      indexName = indexName.indexName;
+      finalIndexName = indexName.indexName;
+    } else {
+      finalIndexName = indexName;
     }
     if (deferrable && deferrable !== "not deferrable") {
       this.client.logger.warn?.(
-        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`
+        `IBMi: unique index \`${finalIndexName}\` will not be deferrable ${deferrable}.`
       );
     }
-    indexName = indexName ? this.formatter.wrap(indexName) : this._indexCommand("unique", this.tableNameRaw, columns);
+    const wrappedIndexName = finalIndexName ? this.formatter.wrap(finalIndexName) : this._indexCommand("unique", this.tableNameRaw, columns);
     columns = this.formatter.columnize(columns);
     const predicateQuery = predicate ? " " + this.client.queryCompiler(predicate).where() : "";
     this.pushQuery(
-      `create unique index ${indexName} on ${this.tableName()} (${columns})${predicateQuery}`
+      `create unique index ${wrappedIndexName} on ${this.tableName()} (${columns})${predicateQuery}`
     );
   }
   // All of the columns to "add" for the query
@@ -177,48 +158,71 @@ var ibmi_transaction_default = IBMiTransaction;
 // src/query/ibmi-querycompiler.ts
 var import_querycompiler = __toESM(require("knex/lib/query/querycompiler"));
 var import_wrappingFormatter = require("knex/lib/formatter/wrappingFormatter");
-var import_date_fns = require("date-fns");
 var IBMiQueryCompiler = class extends import_querycompiler.default {
+  formatTimestampLocal(date) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const y = date.getFullYear();
+    const m = pad(date.getMonth() + 1);
+    const d = pad(date.getDate());
+    const hh = pad(date.getHours());
+    const mm = pad(date.getMinutes());
+    const ss = pad(date.getSeconds());
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  }
   insert() {
     const insertValues = this.single.insert || [];
-    let sql = `select ${this.single.returning ? this.formatter.columnize(this.single.returning) : "IDENTITY_VAL_LOCAL()"} from FINAL TABLE(`;
-    sql += this.with() + `insert into ${this.tableName} `;
     const { returning } = this.single;
-    const returningSql = returning ? this._returning("insert", returning, void 0) + " " : "";
-    if (Array.isArray(insertValues)) {
-      if (insertValues.length === 0) {
-        return "";
+    if (this.isEmptyInsertValues(insertValues)) {
+      if (this.isEmptyObject(insertValues)) {
+        return this.buildEmptyInsertResult(returning);
       }
-    } else if (typeof insertValues === "object" && Object.keys(insertValues).length === 0) {
-      return {
-        sql: sql + returningSql + this._emptyInsertValue,
-        returning
-      };
-    }
-    sql += this._buildInsertData(insertValues, returningSql);
-    sql += ")";
-    return {
-      sql,
-      returning
-    };
-  }
-  _buildInsertData(insertValues, returningSql) {
-    let sql = "";
-    const insertData = this._prepInsert(insertValues);
-    if (insertData.columns.length) {
-      sql += `(${this.formatter.columnize(insertData.columns)}`;
-      sql += `) ${returningSql}values (` + this._buildInsertValues(insertData) + ")";
-    } else if (insertValues.length === 1 && insertValues[0]) {
-      sql += returningSql + this._emptyInsertValue;
-    } else {
       return "";
     }
-    return sql;
+    const selectColumns = returning ? this.formatter.columnize(returning) : "IDENTITY_VAL_LOCAL()";
+    const returningSql = returning ? this._returning("insert", returning, void 0) + " " : "";
+    const insertSql = [
+      this.with(),
+      `insert into ${this.tableName}`,
+      this._buildInsertData(insertValues, returningSql)
+    ].filter(Boolean).join(" ");
+    const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
+    return { sql, returning };
+  }
+  isEmptyInsertValues(insertValues) {
+    return Array.isArray(insertValues) && insertValues.length === 0 || this.isEmptyObject(insertValues);
+  }
+  isEmptyObject(insertValues) {
+    return insertValues !== null && typeof insertValues === "object" && !Array.isArray(insertValues) && Object.keys(insertValues).length === 0;
+  }
+  buildEmptyInsertResult(returning) {
+    const selectColumns = returning ? this.formatter.columnize(returning) : "IDENTITY_VAL_LOCAL()";
+    const returningSql = returning ? this._returning("insert", returning, void 0) + " " : "";
+    const insertSql = [
+      this.with(),
+      `insert into ${this.tableName}`,
+      returningSql + this._emptyInsertValue
+    ].filter(Boolean).join(" ");
+    const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
+    return { sql, returning };
+  }
+  _buildInsertData(insertValues, returningSql) {
+    const insertData = this._prepInsert(insertValues);
+    if (insertData.columns.length > 0) {
+      const columnsSql = `(${this.formatter.columnize(insertData.columns)})`;
+      const valuesSql = `(${this._buildInsertValues(insertData)})`;
+      return `${columnsSql} ${returningSql}values ${valuesSql}`;
+    }
+    if (Array.isArray(insertValues) && insertValues.length === 1 && insertValues[0]) {
+      return returningSql + this._emptyInsertValue;
+    }
+    return "";
   }
   _prepInsert(data) {
-    if (typeof data === "object" && data.migration_time) {
+    if (typeof data === "object" && data?.migration_time) {
       const parsed = new Date(data.migration_time);
-      data.migration_time = (0, import_date_fns.format)(parsed, "yyyy-MM-dd HH:mm:ss");
+      if (!isNaN(parsed.getTime())) {
+        data.migration_time = this.formatTimestampLocal(parsed);
+      }
     }
     const isRaw = (0, import_wrappingFormatter.rawOrFn)(
       data,
@@ -230,36 +234,23 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
     if (isRaw) {
       return isRaw;
     }
-    let columns = [];
-    const values = [];
-    if (!Array.isArray(data)) {
-      data = data ? [data] : [];
+    const dataArray = Array.isArray(data) ? data : data ? [data] : [];
+    if (dataArray.length === 0) {
+      return { columns: [], values: [] };
     }
-    let i = -1;
-    while (++i < data.length) {
-      if (data[i] == null) {
+    const allColumns = /* @__PURE__ */ new Set();
+    for (const item of dataArray) {
+      if (item != null) {
+        Object.keys(item).forEach((key) => allColumns.add(key));
+      }
+    }
+    const columns = Array.from(allColumns).sort();
+    const values = [];
+    for (const item of dataArray) {
+      if (item == null) {
         break;
       }
-      if (i === 0) {
-        columns = Object.keys(data[i]).sort();
-      }
-      const row = new Array(columns.length);
-      const keys = Object.keys(data[i]);
-      let j = -1;
-      while (++j < keys.length) {
-        const key = keys[j];
-        let idx = columns.indexOf(key);
-        if (idx === -1) {
-          columns = columns.concat(key).sort();
-          idx = columns.indexOf(key);
-          let k = -1;
-          while (++k < values.length) {
-            values[k].splice(idx, 0, void 0);
-          }
-          row.splice(idx, 0, void 0);
-        }
-        row[idx] = data[i][key];
-      }
+      const row = columns.map((column) => item[column] ?? void 0);
       values.push(row);
     }
     return {
@@ -274,17 +265,32 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
     const order = this.order();
     const limit = this.limit();
     const { returning } = this.single;
-    let sql = "";
+    const baseUpdateSql = [
+      withSQL,
+      `update ${this.single.only ? "only " : ""}${this.tableName}`,
+      "set",
+      updates.join(", "),
+      where,
+      order,
+      limit
+    ].filter(Boolean).join(" ");
     if (returning) {
-      console.error("IBMi DB2 does not support returning in update statements, only inserts");
-      sql += `select ${this.formatter.columnize(this.single.returning)} from FINAL TABLE(`;
+      this.client.logger.warn?.(
+        "IBMi DB2 does not support returning in update statements, only inserts"
+      );
+      const selectColumns = this.formatter.columnize(this.single.returning);
+      const sql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
+      return { sql, returning };
     }
-    sql += withSQL + `update ${this.single.only ? "only " : ""}${this.tableName} set ` + updates.join(", ") + (where ? ` ${where}` : "") + (order ? ` ${order}` : "") + (limit ? ` ${limit}` : "");
-    if (returning) {
-      sql += `)`;
-    }
-    return { sql, returning };
+    return { sql: baseUpdateSql, returning };
   }
+  /**
+   * Handle returning clause for IBMi DB2 queries
+   * Note: IBMi DB2 has limited support for RETURNING clauses
+   * @param method - The SQL method (insert, update, delete)
+   * @param value - The returning value
+   * @param withTrigger - Trigger support (currently unused)
+   */
   _returning(method, value, withTrigger) {
     switch (method) {
       case "update":
@@ -294,6 +300,8 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
         return value ? `${withTrigger ? " into #out" : ""}` : "";
       case "rowcount":
         return value ? "select @@rowcount" : "";
+      default:
+        return "";
     }
   }
   columnizeWithPrefix(prefix, target) {
@@ -433,7 +441,10 @@ var DB2Client = class extends import_knex.knex.Client {
     return method === "select" || method === "first" || method === "pluck";
   }
   async executeSelectQuery(connection, obj) {
-    const rows = await connection.query(obj.sql, obj.bindings);
+    const rows = await connection.query(
+      obj.sql,
+      obj.bindings
+    );
     if (rows) {
       obj.response = { rows, rowCount: rows.length };
     }
@@ -450,19 +461,27 @@ var DB2Client = class extends import_knex.knex.Client {
       obj.response = this.formatStatementResponse(result);
     } catch (err) {
       this.printError(JSON.stringify(err));
+      throw err;
     }
   }
+  /**
+   * Format statement response from ODBC driver
+   * Handles special case for IDENTITY_VAL_LOCAL() function
+   */
   formatStatementResponse(result) {
-    if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
+    const isIdentityQuery = result.statement?.includes("IDENTITY_VAL_LOCAL()");
+    if (isIdentityQuery && result.columns?.length > 0) {
       return {
         rows: result.map(
-          (row) => result.columns && result.columns?.length > 0 ? row[result.columns[0].name] : row
+          (row) => row[result.columns[0].name]
         ),
         rowCount: result.count
       };
-    } else {
-      return { rows: result, rowCount: result.count };
     }
+    return {
+      rows: result,
+      rowCount: result.count || 0
+    };
   }
   async _stream(connection, obj, stream, options) {
     if (!obj.sql) throw new Error("A query is required to stream results");
@@ -479,6 +498,8 @@ var DB2Client = class extends import_knex.knex.Client {
         (error, cursor) => {
           if (error) {
             this.printError(JSON.stringify(error, null, 2));
+            stream.emit("error", error);
+            reject(error);
             return;
           }
           const readableStream = this._createCursorStream(cursor);
@@ -575,7 +596,7 @@ var DB2Client = class extends import_knex.knex.Client {
   }
 };
 var DB2Dialect = DB2Client;
-var src_default = DB2Client;
+var index_default = DB2Client;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DB2Dialect
