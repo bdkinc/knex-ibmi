@@ -37,14 +37,14 @@ class DB2Client extends knex.Client {
 
     if (this.dialect && !this.config.client) {
       this.printWarn(
-        `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the future. Please use configuration option 'client' instead.`,
+        `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the future. Please use configuration option 'client' instead.`
       );
     }
 
     const dbClient = this.config.client || this.dialect;
     if (!dbClient) {
       throw new Error(
-        `knex: Required configuration option 'client' is missing.`,
+        `knex: Required configuration option 'client' is missing.`
       );
     }
 
@@ -69,7 +69,7 @@ class DB2Client extends knex.Client {
     return odbc;
   }
 
-  wrapIdentifierImpl(value: any) {
+  wrapIdentifierImpl(value: string) {
     // override default wrapper (")
     // we don't want to use it since
     // it makes identifier case-sensitive in DB2
@@ -109,7 +109,7 @@ class DB2Client extends knex.Client {
     }
 
     this.printDebug(
-      "connection config: " + this._getConnectionString(connectionConfig),
+      "connection config: " + this._getConnectionString(connectionConfig)
     );
 
     if (this.config?.pool) {
@@ -125,7 +125,7 @@ class DB2Client extends knex.Client {
     }
 
     return await this.driver.connect(
-      this._getConnectionString(connectionConfig),
+      this._getConnectionString(connectionConfig)
     );
   }
 
@@ -141,7 +141,7 @@ class DB2Client extends knex.Client {
       connectionConfig.connectionStringParams || {};
 
     const connectionStringExtension = Object.keys(
-      connectionStringParams,
+      connectionStringParams
     ).reduce((result, key) => {
       const value = connectionStringParams[key];
       return `${result}${key}=${value};`;
@@ -159,7 +159,7 @@ class DB2Client extends knex.Client {
     }`;
   }
 
-// Runs the query on the specified connection, providing the bindings
+  // Runs the query on the specified connection, providing the bindings
   async _query(connection: Connection, obj: any) {
     const queryObject = this.normalizeQueryObject(obj);
     const method = this.determineQueryMethod(queryObject);
@@ -194,14 +194,23 @@ class DB2Client extends knex.Client {
     return method === "select" || method === "first" || method === "pluck";
   }
 
-  private async executeSelectQuery(connection: Connection, obj: { sql: string, bindings: any[], response: unknown }): Promise<void> {
-    const rows: Record<any, any>[] = await connection.query(obj.sql, obj.bindings);
+  private async executeSelectQuery(
+    connection: Connection,
+    obj: { sql: string; bindings: any[]; response: unknown }
+  ): Promise<void> {
+    const rows: Record<any, any>[] = await connection.query(
+      obj.sql,
+      obj.bindings
+    );
     if (rows) {
       obj.response = { rows, rowCount: rows.length };
     }
   }
 
-  private async executeStatementQuery(connection: Connection, obj: any): Promise<void> {
+  private async executeStatementQuery(
+    connection: Connection,
+    obj: any
+  ): Promise<void> {
     try {
       const statement = await connection.createStatement();
       await statement.prepare(obj.sql);
@@ -219,26 +228,30 @@ class DB2Client extends knex.Client {
     }
   }
 
-  private formatStatementResponse(result: any): { rows: any; rowCount: number } {
-    // TODO: evaluate if this is necessary
-    // this is hacky we check the SQL for the ID column
-    // we check for the IDENTITY scalar function
-    // if that function is present, then we just return the value of the
-    // IDENTITY column
-    if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
+  /**
+   * Format statement response from ODBC driver
+   * Handles special case for IDENTITY_VAL_LOCAL() function
+   */
+  private formatStatementResponse(result: any): {
+    rows: any;
+    rowCount: number;
+  } {
+    const isIdentityQuery = result.statement?.includes("IDENTITY_VAL_LOCAL()");
+
+    if (isIdentityQuery && result.columns?.length > 0) {
       return {
-        rows: result.map((row: { [x: string]: any }) =>
-          result.columns && result.columns?.length > 0
-            ? row[result.columns[0].name]
-            : row,
+        rows: result.map(
+          (row: { [x: string]: any }) => row[result.columns[0].name]
         ),
         rowCount: result.count,
       };
-    } else {
-      return { rows: result, rowCount: result.count };
     }
-  }
 
+    return {
+      rows: result,
+      rowCount: result.count || 0,
+    };
+  }
 
   async _stream(
     connection: Connection,
@@ -246,7 +259,7 @@ class DB2Client extends knex.Client {
     stream: any,
     options: {
       fetchSize?: number;
-    },
+    }
   ) {
     if (!obj.sql) throw new Error("A query is required to stream results");
 
@@ -273,7 +286,7 @@ class DB2Client extends knex.Client {
             stream.emit("error", err);
           });
           readableStream.pipe(stream);
-        },
+        }
       );
     });
   }
@@ -420,12 +433,13 @@ interface DB2ConnectionParams {
     | "SQL_DESC_SEARCHABLE"
     | "SQL_DESC_UNNAMED"
     | "SQL_DESC_UPDATABLE";
+  TRUEAUTOCOMMIT?: 0 | 1;
 }
 
 interface DB2ConnectionConfig {
   database: string;
   host: string;
-  port: 50000 | number;
+  port: 8471 | 9471 | number;
   user: string;
   password: string;
   driver: "IBM i Access ODBC Driver" | string;

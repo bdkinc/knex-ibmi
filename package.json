@@ -35,27 +35,25 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@types/chai": "^4.3.17",
+    "@types/chai": "^5.2.2",
     "@types/knex": "^0.16.1",
-    "@types/lodash": "^4.17.7",
-    "@types/mocha": "^10.0.7",
-    "@types/node": "^22.1.0",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "chai": "^5.1.1",
-    "debug": "^4.3.6",
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
-    "mocha": "^10.7.0",
-    "prettier": "^3.3.3",
-    "ts-mocha": "^10.0.0",
-    "tsup": "^8.2.4",
-    "tsx": "^4.16.5",
-    "typescript": "^5.5.4"
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.3.2",
+    "@typescript-eslint/eslint-plugin": "^8.43.0",
+    "@typescript-eslint/parser": "^8.43.0",
+    "chai": "^6.0.1",
+    "debug": "^4.4.1",
+    "eslint": "^9.35.0",
+    "eslint-config-prettier": "^10.1.8",
+    "mocha": "^11.7.2",
+    "prettier": "^3.6.2",
+    "ts-mocha": "^11.1.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
   },
   "dependencies": {
-    "date-fns": "^3.6.0",
     "knex": "^3",
-    "odbc": "^2.4.8"
+    "odbc": "^2.4.9"
   }
 }
