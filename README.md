@@ -29,28 +29,30 @@ npm install @bdkinc/knex-ibmi knex odbc
 ## Quick Start
 
 ```js
-const knex = require("knex");
-const { DB2Dialect } = require("@bdkinc/knex-ibmi");
+import knex from "knex";
+import { DB2Dialect } from "@bdkinc/knex-ibmi";
 
 const db = knex({
   client: DB2Dialect,
   connection: {
-    host: "localhost",
+    host: "your-ibm-i-host",
     database: "*LOCAL",
-    user: "<user>",
-    password: "<password>",
+    user: "your-username",
+    password: "your-password",
     driver: "IBM i Access ODBC Driver",
     connectionStringParams: { DBQ: "MYLIB" },
   },
   pool: { min: 2, max: 10 },
 });
 
-db.select("*")
-  .from("table")
-  .where({ foo: "bar" })
-  .then(console.log)
-  .catch(console.error)
-  .finally(() => process.exit());
+try {
+  const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
+  console.log(results);
+} catch (error) {
+  console.error("Database error:", error);
+} finally {
+  await db.destroy();
+}
 ```
 
 ## Usage
@@ -66,15 +68,27 @@ const { DB2Dialect } = require("@bdkinc/knex-ibmi");
 const db = knex({
   client: DB2Dialect,
   connection: {
-    host: "localhost",
+    host: "your-ibm-i-host",
     database: "*LOCAL",
-    user: "<user>",
-    password: "<password>",
+    user: "your-username",
+    password: "your-password",
     driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { ALLOWPROCCALLS: 1, CMT: 0, DBQ: "MYLIB" },
+    connectionStringParams: { 
+      ALLOWPROCCALLS: 1, 
+      CMT: 0, 
+      DBQ: "MYLIB" 
+    },
   },
   pool: { min: 2, max: 10 },
 });
+
+// Example query
+db.select("*")
+  .from("MYTABLE")
+  .where({ STATUS: "A" })
+  .then(results => console.log(results))
+  .catch(error => console.error("Database error:", error))
+  .finally(() => db.destroy());
 ```
 
 ### ESM
@@ -87,12 +101,16 @@ import { DB2Dialect } from "@bdkinc/knex-ibmi";
 const config = {
   client: DB2Dialect,
   connection: {
-    host: "localhost",
+    host: "your-ibm-i-host",
     database: "*LOCAL",
-    user: "<user>",
-    password: "<password>",
+    user: "your-username",
+    password: "your-password",
     driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { ALLOWPROCCALLS: 1, CMT: 0, DBQ: "MYLIB" },
+    connectionStringParams: { 
+      ALLOWPROCCALLS: 1, 
+      CMT: 0, 
+      DBQ: "MYLIB" 
+    },
   },
   pool: { min: 2, max: 10 },
 };
@@ -100,12 +118,12 @@ const config = {
 const db = knex(config);
 
 try {
-  const data = await db.select("*").from("table").where({ foo: "bar" });
-  console.log(data);
-} catch (err) {
-  throw err;
+  const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
+  console.log(results);
+} catch (error) {
+  console.error("Database error:", error);
 } finally {
-  process.exit();
+  await db.destroy();
 }
 ```
 
@@ -118,12 +136,16 @@ import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 const config: DB2Config = {
   client: DB2Dialect,
   connection: {
-    host: "localhost",
+    host: "your-ibm-i-host",
     database: "*LOCAL",
-    user: "<user>",
-    password: "<password>",
+    user: "your-username",
+    password: "your-password",
     driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { ALLOWPROCCALLS: 1, CMT: 0, DBQ: "MYLIB" },
+    connectionStringParams: { 
+      ALLOWPROCCALLS: 1, 
+      CMT: 0, 
+      DBQ: "MYLIB" 
+    },
   },
   pool: { min: 2, max: 10 },
 };
@@ -131,12 +153,12 @@ const config: DB2Config = {
 const db = knex(config);
 
 try {
-  const data = await db.select("*").from("table").where({ foo: "bar" });
-  console.log(data);
-} catch (err) {
-  throw err;
+  const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
+  console.log(results);
+} catch (error) {
+  console.error("Database error:", error);
 } finally {
-  process.exit();
+  await db.destroy();
 }
 ```
 
@@ -151,12 +173,16 @@ import { finished } from "node:stream/promises";
 const config: DB2Config = {
   client: DB2Dialect,
   connection: {
-    host: "localhost",
+    host: "your-ibm-i-host",
     database: "*LOCAL",
-    user: "<user>",
-    password: "<password>",
+    user: "your-username",
+    password: "your-password",
     driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { ALLOWPROCCALLS: 1, CMT: 0, DBQ: "MYLIB" },
+    connectionStringParams: { 
+      ALLOWPROCCALLS: 1, 
+      CMT: 0, 
+      DBQ: "MYLIB" 
+    },
   },
   pool: { min: 2, max: 10 },
 };
@@ -164,26 +190,28 @@ const config: DB2Config = {
 const db = knex(config);
 
 try {
-  const data = await db.select("*").from("table").stream({ fetchSize: 1 });
+  const stream = await db.select("*").from("LARGETABLE").stream({ fetchSize: 100 });
 
   const transform = new Transform({
     objectMode: true,
     transform(chunk, _enc, cb) {
-      console.log(chunk);
+      // Process each row
+      console.log("Processing row:", chunk);
       cb(null, chunk);
     },
   });
 
-  data.pipe(transform);
-  await finished(data);
+  stream.pipe(transform);
+  await finished(stream);
 
-  for await (const record of data) {
+  // Alternative: async iteration
+  for await (const record of stream) {
     console.log(record);
   }
-} catch (err) {
-  throw err;
+} catch (error) {
+  console.error("Streaming error:", error);
 } finally {
-  process.exit();
+  await db.destroy();
 }
 ```
 
