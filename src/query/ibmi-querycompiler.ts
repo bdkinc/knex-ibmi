@@ -2,6 +2,16 @@ import QueryCompiler from "knex/lib/query/querycompiler";
 import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
 
 class IBMiQueryCompiler extends QueryCompiler {
+  private formatTimestampLocal(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const y = date.getFullYear();
+    const m = pad(date.getMonth() + 1);
+    const d = pad(date.getDate());
+    const hh = pad(date.getHours());
+    const mm = pad(date.getMinutes());
+    const ss = pad(date.getSeconds());
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  }
   insert() {
     const insertValues = this.single.insert || [];
     const { returning } = this.single;
@@ -45,6 +55,7 @@ class IBMiQueryCompiler extends QueryCompiler {
 
   private isEmptyObject(insertValues: any): boolean {
     return (
+      insertValues !== null &&
       typeof insertValues === "object" &&
       !Array.isArray(insertValues) &&
       Object.keys(insertValues).length === 0
@@ -104,10 +115,7 @@ class IBMiQueryCompiler extends QueryCompiler {
     if (typeof data === "object" && data?.migration_time) {
       const parsed = new Date(data.migration_time);
       if (!isNaN(parsed.getTime())) {
-        data.migration_time = parsed
-          .toISOString()
-          .slice(0, 19)
-          .replace("T", " ");
+        data.migration_time = this.formatTimestampLocal(parsed);
       }
     }
 
@@ -207,10 +215,12 @@ class IBMiQueryCompiler extends QueryCompiler {
         return value ? `${withTrigger ? " into #out" : ""}` : "";
       case "rowcount":
         return value ? "select @@rowcount" : "";
+      default:
+        return "";
     }
   }
 
-  columnizeWithPrefix(prefix: string, target: any) {
+  columnizeWithPrefix(prefix: string, target: string | string[]) {
     const columns = typeof target === "string" ? [target] : target;
     let str = "";
     let i = -1;

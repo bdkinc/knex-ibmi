@@ -225,6 +225,7 @@ class DB2Client extends knex.Client {
       obj.response = this.formatStatementResponse(result);
     } catch (err: any) {
       this.printError(JSON.stringify(err));
+      throw err;
     }
   }
 
@@ -277,6 +278,8 @@ class DB2Client extends knex.Client {
         (error, cursor) => {
           if (error) {
             this.printError(JSON.stringify(error, null, 2));
+            stream.emit("error", error);
+            reject(error);
             return;
           }
 
