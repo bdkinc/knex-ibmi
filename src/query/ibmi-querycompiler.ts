@@ -1,76 +1,125 @@
-import QueryCompiler from "knex/lib/query/querycompiler";
-import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
-import { format } from "date-fns";
+import QueryCompiler from "knex/lib/query/querycompiler.js";
+import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter.js";
 
 class IBMiQueryCompiler extends QueryCompiler {
+  // Use type assertion to work around ESM import interface issues
+  [key: string]: any;
+
+  private formatTimestampLocal(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const y = date.getFullYear();
+    const m = pad(date.getMonth() + 1);
+    const d = pad(date.getDate());
+    const hh = pad(date.getHours());
+    const mm = pad(date.getMinutes());
+    const ss = pad(date.getSeconds());
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  }
   insert() {
     const insertValues = this.single.insert || [];
-
-    // TODO: re-evaluate
-    // we need to return a value,
-    // we need to wrap the insert statement in a select statement
-    // we use the "IDENTITY_VAL_LOCAL()" function to return the IDENTITY
-    // unless specified in a return
-    let sql = `select ${
-      this.single.returning
-        ? this.formatter.columnize(this.single.returning)
-        : "IDENTITY_VAL_LOCAL()"
-    } from FINAL TABLE(`;
-
-    sql += this.with() + `insert into ${this.tableName} `;
-
     const { returning } = this.single;
+
+    // Handle empty insert values
+    if (this.isEmptyInsertValues(insertValues)) {
+      if (this.isEmptyObject(insertValues)) {
+        return this.buildEmptyInsertResult(returning);
+      }
+      return "";
+    }
+
+    // Build the complete INSERT statement wrapped in SELECT from FINAL TABLE
+    const selectColumns = returning
+      ? this.formatter.columnize(returning)
+      : "IDENTITY_VAL_LOCAL()";
+
     const returningSql = returning
       ? this._returning("insert", returning, undefined) + " "
       : "";
 
-    if (Array.isArray(insertValues)) {
-      if (insertValues.length === 0) {
-        return "";
-      }
-    } else if (
-      typeof insertValues === "object" &&
-      Object.keys(insertValues).length === 0
-    ) {
-      return {
-        sql: sql + returningSql + this._emptyInsertValue,
-        returning,
-      };
-    }
+    const insertSql = [
+      this.with(),
+      `insert into ${this.tableName}`,
+      this._buildInsertData(insertValues, returningSql),
+    ]
+      .filter(Boolean)
+      .join(" ");
 
-    sql += this._buildInsertData(insertValues, returningSql);
-    sql += ")";
+    const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
 
-    return {
-      sql,
-      returning,
-    };
+    return { sql, returning };
   }
 
-  _buildInsertData(insertValues: string | any[], returningSql: string) {
-    let sql = "";
+  private isEmptyInsertValues(insertValues: any): boolean {
+    return (
+      (Array.isArray(insertValues) && insertValues.length === 0) ||
+      this.isEmptyObject(insertValues)
+    );
+  }
+
+  private isEmptyObject(insertValues: any): boolean {
+    return (
+      insertValues !== null &&
+      typeof insertValues === "object" &&
+      !Array.isArray(insertValues) &&
+      Object.keys(insertValues).length === 0
+    );
+  }
+
+  private buildEmptyInsertResult(returning: any): {
+    sql: string;
+    returning: any;
+  } {
+    const selectColumns = returning
+      ? this.formatter.columnize(returning)
+      : "IDENTITY_VAL_LOCAL()";
+
+    const returningSql = returning
+      ? this._returning("insert", returning, undefined) + " "
+      : "";
+
+    const insertSql = [
+      this.with(),
+      `insert into ${this.tableName}`,
+      returningSql + this._emptyInsertValue,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
+
+    return { sql, returning };
+  }
+
+  _buildInsertData(insertValues: string | any[], returningSql: string): string {
     const insertData = this._prepInsert(insertValues);
 
-    if (insertData.columns.length) {
-      sql += `(${this.formatter.columnize(insertData.columns)}`;
-      sql +=
-        `) ${returningSql}values (` +
-        this._buildInsertValues(insertData) +
-        ")";
-    } else if (insertValues.length === 1 && insertValues[0]) {
-      sql += returningSql + this._emptyInsertValue;
-    } else {
-      return "";
+    // Handle case with columns and data
+    if (insertData.columns.length > 0) {
+      const columnsSql = `(${this.formatter.columnize(insertData.columns)})`;
+      const valuesSql = `(${this._buildInsertValues(insertData)})`;
+      return `${columnsSql} ${returningSql}values ${valuesSql}`;
     }
 
-    return sql;
+    // Handle a single empty object case
+    if (
+      Array.isArray(insertValues) &&
+      insertValues.length === 1 &&
+      insertValues[0]
+    ) {
+      return returningSql + this._emptyInsertValue;
+    }
+
+    // Handle empty/invalid data
+    return "";
   }
 
   _prepInsert(data: any): { columns: any; values: any } {
-    // this is for timestamps in knex migrations
-    if (typeof data === "object" && data.migration_time) {
+    // Handle timestamps in knex migrations
+    if (typeof data === "object" && data?.migration_time) {
       const parsed = new Date(data.migration_time);
-      data.migration_time = format(parsed, "yyyy-MM-dd HH:mm:ss");
+      if (!isNaN(parsed.getTime())) {
+        data.migration_time = this.formatTimestampLocal(parsed);
+      }
     }
 
     const isRaw = rawOrFn_(
@@ -78,50 +127,38 @@ class IBMiQueryCompiler extends QueryCompiler {
       undefined,
       this.builder,
       this.client,
-      this.bindingsHolder,
+      this.bindingsHolder
     );
 
     if (isRaw) {
       return isRaw;
     }
 
-    let columns: any[] = [];
-    const values: any[] = [];
+    // Normalize data to array format
+    const dataArray = Array.isArray(data) ? data : data ? [data] : [];
 
-    if (!Array.isArray(data)) {
-      data = data ? [data] : [];
+    if (dataArray.length === 0) {
+      return { columns: [], values: [] };
     }
 
-    let i = -1;
+    // Get all unique columns from all data objects
+    const allColumns = new Set<string>();
+    for (const item of dataArray) {
+      if (item != null) {
+        Object.keys(item).forEach((key) => allColumns.add(key));
+      }
+    }
 
-    while (++i < data.length) {
-      if (data[i] == null) {
+    const columns = Array.from(allColumns).sort();
+    const values: any[] = [];
+
+    // Build values array
+    for (const item of dataArray) {
+      if (item == null) {
         break;
       }
 
-      if (i === 0) {
-        columns = Object.keys(data[i]).sort();
-      }
-
-      const row = new Array(columns.length);
-      const keys = Object.keys(data[i]);
-      let j = -1;
-
-      while (++j < keys.length) {
-        const key = keys[j];
-        let idx = columns.indexOf(key);
-        if (idx === -1) {
-          columns = columns.concat(key).sort();
-          idx = columns.indexOf(key);
-          let k = -1;
-          while (++k < values.length) {
-            values[k].splice(idx, 0, undefined);
-          }
-          row.splice(idx, 0, undefined);
-        }
-        row[idx] = data[i][key];
-      }
-
+      const row = columns.map((column) => item[column] ?? undefined);
       values.push(row);
     }
 
@@ -139,32 +176,40 @@ class IBMiQueryCompiler extends QueryCompiler {
     const limit = this.limit();
     const { returning } = this.single;
 
-    let sql = "";
+    // Build the base update statement
+    const baseUpdateSql = [
+      withSQL,
+      `update ${this.single.only ? "only " : ""}${this.tableName}`,
+      "set",
+      updates.join(", "),
+      where,
+      order,
+      limit,
+    ]
+      .filter(Boolean)
+      .join(" ");
 
+    // Handle returning clause
     if (returning) {
-      console.error("IBMi DB2 does not support returning in update statements, only inserts");
-      sql += `select ${this.formatter.columnize(this.single.returning)} from FINAL TABLE(`;
+      this.client.logger.warn?.(
+        "IBMi DB2 does not support returning in update statements, only inserts"
+      );
+      const selectColumns = this.formatter.columnize(this.single.returning);
+      const sql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
+      return { sql, returning };
     }
 
-    sql +=
-      withSQL +
-      `update ${this.single.only ? "only " : ""}${this.tableName}` +
-      " set " +
-      updates.join(", ") +
-      (where ? ` ${where}` : "") +
-      (order ? ` ${order}` : "") +
-      (limit ? ` ${limit}` : "");
-
-    if (returning) {
-      sql += `)`;
-    }
-
-    return { sql, returning };
+    return { sql: baseUpdateSql, returning };
   }
 
+  /**
+   * Handle returning clause for IBMi DB2 queries
+   * Note: IBMi DB2 has limited support for RETURNING clauses
+   * @param method - The SQL method (insert, update, delete)
+   * @param value - The returning value
+   * @param withTrigger - Trigger support (currently unused)
+   */
   _returning(method: string, value: any, withTrigger: undefined) {
-    // currently a placeholder in case I need to update return values
-    // or if we need to do anything with triggers
     switch (method) {
       case "update":
       case "insert":
@@ -173,10 +218,12 @@ class IBMiQueryCompiler extends QueryCompiler {
         return value ? `${withTrigger ? " into #out" : ""}` : "";
       case "rowcount":
         return value ? "select @@rowcount" : "";
+      default:
+        return "";
     }
   }
 
-  columnizeWithPrefix(prefix: string, target: any) {
+  columnizeWithPrefix(prefix: string, target: string | string[]) {
     const columns = typeof target === "string" ? [target] : target;
     let str = "";
     let i = -1;

@@ -1,51 +1,17 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-var __create = Object.create;
 var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // src/index.ts
-var index_exports = {};
-__export(index_exports, {
-  DB2Dialect: () => DB2Dialect,
-  IBMiMigrationRunner: () => IBMiMigrationRunner,
-  createIBMiMigrationRunner: () => createIBMiMigrationRunner,
-  default: () => index_default
-});
-module.exports = __toCommonJS(index_exports);
-var import_node_process = __toESM(require("process"));
-var import_knex = __toESM(require("knex"));
-var import_odbc = __toESM(require("odbc"));
+import process from "process";
+import knex from "knex";
+import odbc from "odbc";
 
 // src/schema/ibmi-compiler.ts
-var import_compiler = __toESM(require("knex/lib/schema/compiler.js"));
-var IBMiSchemaCompiler = class extends import_compiler.default {
+import SchemaCompiler from "knex/lib/schema/compiler.js";
+var IBMiSchemaCompiler = class extends SchemaCompiler {
   hasTable(tableName) {
     const upperName = String(tableName).toUpperCase();
     let schemaName = null;
@@ -117,8 +83,8 @@ var IBMiSchemaCompiler = class extends import_compiler.default {
 var ibmi_compiler_default = IBMiSchemaCompiler;
 
 // src/schema/ibmi-tablecompiler.ts
-var import_tablecompiler = __toESM(require("knex/lib/schema/tablecompiler.js"));
-var IBMiTableCompiler = class extends import_tablecompiler.default {
+import TableCompiler from "knex/lib/schema/tablecompiler.js";
+var IBMiTableCompiler = class extends TableCompiler {
   createQuery(columns, ifNot, like) {
     let createStatement = ifNot ? `if object_id('${this.tableName()}', 'U') is null ` : "";
     if (like) {
@@ -181,8 +147,8 @@ var IBMiTableCompiler = class extends import_tablecompiler.default {
 var ibmi_tablecompiler_default = IBMiTableCompiler;
 
 // src/schema/ibmi-columncompiler.ts
-var import_columncompiler = __toESM(require("knex/lib/schema/columncompiler.js"));
-var IBMiColumnCompiler = class extends import_columncompiler.default {
+import ColumnCompiler from "knex/lib/schema/columncompiler.js";
+var IBMiColumnCompiler = class extends ColumnCompiler {
   increments(options = { primaryKey: true }) {
     return "int not null generated always as identity (start with 1, increment by 1)" + (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
   }
@@ -190,8 +156,8 @@ var IBMiColumnCompiler = class extends import_columncompiler.default {
 var ibmi_columncompiler_default = IBMiColumnCompiler;
 
 // src/execution/ibmi-transaction.ts
-var import_transaction = __toESM(require("knex/lib/execution/transaction.js"));
-var IBMiTransaction = class extends import_transaction.default {
+import Transaction from "knex/lib/execution/transaction.js";
+var IBMiTransaction = class extends Transaction {
   begin(connection) {
     try {
       return connection.beginTransaction();
@@ -241,9 +207,9 @@ var IBMiTransaction = class extends import_transaction.default {
 var ibmi_transaction_default = IBMiTransaction;
 
 // src/query/ibmi-querycompiler.ts
-var import_querycompiler = __toESM(require("knex/lib/query/querycompiler.js"));
-var import_wrappingFormatter = require("knex/lib/formatter/wrappingFormatter.js");
-var IBMiQueryCompiler = class extends import_querycompiler.default {
+import QueryCompiler from "knex/lib/query/querycompiler.js";
+import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter.js";
+var IBMiQueryCompiler = class extends QueryCompiler {
   formatTimestampLocal(date) {
     const pad = (n) => String(n).padStart(2, "0");
     const y = date.getFullYear();
@@ -309,7 +275,7 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
         data.migration_time = this.formatTimestampLocal(parsed);
       }
     }
-    const isRaw = (0, import_wrappingFormatter.rawOrFn)(
+    const isRaw = rawOrFn_(
       data,
       void 0,
       this.builder,
@@ -403,11 +369,11 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
 var ibmi_querycompiler_default = IBMiQueryCompiler;
 
 // src/index.ts
-var import_node_stream = require("stream");
+import { Readable } from "stream";
 
 // src/migrations/ibmi-migration-runner.ts
-var import_fs = __toESM(require("fs"));
-var import_path = __toESM(require("path"));
+import fs from "fs";
+import path from "path";
 var IBMiMigrationRunner = class {
   constructor(knex2, config) {
     __publicField(this, "knex");
@@ -584,12 +550,12 @@ var IBMiMigrationRunner = class {
   }
   getMigrationFiles() {
     const { directory, extension } = this.config;
-    if (!import_fs.default.existsSync(directory)) {
+    if (!fs.existsSync(directory)) {
       throw new Error(`Migration directory does not exist: ${directory}`);
     }
     const validExtensions = ["js", "ts", "mjs", "cjs"];
     const extensionToCheck = extension || "js";
-    return import_fs.default.readdirSync(directory).filter((file) => {
+    return fs.readdirSync(directory).filter((file) => {
       if (extension && extension !== "js") {
         return file.endsWith(`.${extension}`);
       }
@@ -597,7 +563,7 @@ var IBMiMigrationRunner = class {
     }).sort();
   }
   getMigrationPath(filename) {
-    return import_path.default.resolve(this.config.directory, filename);
+    return path.resolve(this.config.directory, filename);
   }
 };
 function createIBMiMigrationRunner(knex2, config) {
@@ -605,7 +571,7 @@ function createIBMiMigrationRunner(knex2, config) {
 }
 
 // src/index.ts
-var DB2Client = class extends import_knex.default.Client {
+var DB2Client = class extends knex.Client {
   constructor(config) {
     console.log("\u{1F3AF} DB2Client constructor called!");
     super(config);
@@ -647,7 +613,7 @@ var DB2Client = class extends import_knex.default.Client {
     }
   }
   _driver() {
-    return import_odbc.default;
+    return odbc;
   }
   wrapIdentifierImpl(value) {
     if (value.includes("KNEX_MIGRATIONS") || value.includes("knex_migrations")) {
@@ -656,7 +622,7 @@ var DB2Client = class extends import_knex.default.Client {
     return value;
   }
   printDebug(message) {
-    if (import_node_process.default.env.DEBUG === "true") {
+    if (process.env.DEBUG === "true") {
       if (this.logger.debug) {
         this.logger.debug("knex-ibmi: " + message);
       }
@@ -668,7 +634,7 @@ var DB2Client = class extends import_knex.default.Client {
     }
   }
   printWarn(message) {
-    if (import_node_process.default.env.DEBUG === "true") {
+    if (process.env.DEBUG === "true") {
       if (this.logger.warn) {
         this.logger.warn("knex-ibmi: " + message);
       }
@@ -724,7 +690,7 @@ var DB2Client = class extends import_knex.default.Client {
     const queryObject = this.normalizeQueryObject(obj);
     const method = this.determineQueryMethod(queryObject);
     queryObject.sqlMethod = method;
-    if (import_node_process.default.env.DEBUG === "true" && queryObject.sql && (queryObject.sql.toLowerCase().includes("create table") || queryObject.sql.toLowerCase().includes("knex_migrations"))) {
+    if (process.env.DEBUG === "true" && queryObject.sql && (queryObject.sql.toLowerCase().includes("create table") || queryObject.sql.toLowerCase().includes("knex_migrations"))) {
       this.printDebug(
         `Executing ${method} query: ${queryObject.sql.substring(0, 200)}...`
       );
@@ -740,7 +706,7 @@ var DB2Client = class extends import_knex.default.Client {
         await this.executeStatementQuery(connection, queryObject);
       }
       const endTime = Date.now();
-      if (import_node_process.default.env.DEBUG === "true" && queryObject.sql && (queryObject.sql.toLowerCase().includes("create table") || queryObject.sql.toLowerCase().includes("knex_migrations"))) {
+      if (process.env.DEBUG === "true" && queryObject.sql && (queryObject.sql.toLowerCase().includes("create table") || queryObject.sql.toLowerCase().includes("knex_migrations"))) {
         this.printDebug(`${method} completed in ${endTime - startTime}ms`);
       }
       this.printDebug(`Query completed: ${method} (${endTime - startTime}ms)`);
@@ -890,7 +856,7 @@ var DB2Client = class extends import_knex.default.Client {
   }
   _createCursorStream(cursor) {
     const parentThis = this;
-    return new import_node_stream.Readable({
+    return new Readable({
       objectMode: true,
       read() {
         cursor.fetch((error, result) => {
@@ -996,10 +962,10 @@ var DB2Client = class extends import_knex.default.Client {
 };
 var DB2Dialect = DB2Client;
 var index_default = DB2Client;
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
+export {
   DB2Dialect,
   IBMiMigrationRunner,
-  createIBMiMigrationRunner
-});
-//# sourceMappingURL=index.js.map
+  createIBMiMigrationRunner,
+  index_default as default
+};
+//# sourceMappingURL=index.mjs.map

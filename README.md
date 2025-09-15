@@ -1,159 +1,173 @@
+# @bdkinc/knex-ibmi
+
 [![npm version](http://img.shields.io/npm/v/@bdkinc/knex-ibmi.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
 
-**Please submit an issue for any bug encounter or any questions you have.**
+Knex.js dialect for DB2 on IBM i (via ODBC). Built for usage with the official IBM i Access ODBC driver and tested on IBM i.
 
-## Description
+For IBM i OSS docs, see https://ibmi-oss-docs.readthedocs.io/. ODBC guidance: https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html.
 
-This is an external dialect for [knex](https://knexjs.org).
-This library uses the ODBC (as recommended here https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html)
-driver and is only tested on IBMi.
+> Found an issue or have a question? Please open an issue.
 
-For more information on IBMi OSS here are the [docs](https://ibmi-oss-docs.readthedocs.io/en/latest/README.html)
-
-## Supported functionality
+## Features
 
 - Query building
 - Query execution
 - Transactions
 - Streaming
 
+## Requirements
+
+- Node.js >= 16
+- ODBC driver (IBM i Access ODBC Driver)
+
 ## Installation
 
+```bash
+npm install @bdkinc/knex-ibmi knex odbc
 ```
-npm install --save odbc knex @bdkinc/knex-ibmi
+
+## Quick Start
+
+```js
+import knex from "knex";
+import { DB2Dialect } from "@bdkinc/knex-ibmi";
+
+/** @type {import("@bdkinc/knex-ibmi").DB2Config} */
+const config = {
+  client: DB2Dialect,
+  connection: {
+    host: "your-ibm-i-host",
+    database: "*LOCAL",
+    user: "your-username",
+    password: "your-password",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: { DBQ: "MYLIB" },
+  },
+  pool: { min: 2, max: 10 },
+};
+
+const db = knex(config);
+
+try {
+  const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
+  console.log(results);
+} catch (error) {
+  console.error("Database error:", error);
+} finally {
+  await db.destroy();
+}
 ```
-
-Requires Node v16 or higher.
-
-## Dependencies
-
-`npm install odbc` see [odbc](https://github.com/IBM/node-odbc)
-
-`npm install knex` see [knex](https://github.com/tgriesser/knex)
 
 ## Usage
 
-This library can be used as commonjs, esm or TypeScript.
+This package can be used with CommonJS, ESM, or TypeScript.
 
-### CommonJs
+### CommonJS
 
-```javascript
+```js
 const knex = require("knex");
 const { DB2Dialect } = require("@bdkinc/knex-ibmi");
 
 const db = knex({
   client: DB2Dialect,
   connection: {
-    host: "localhost", // hostname or ip address of server
-    database: "*LOCAL", // usually named in your odbc.ini connection
-    user: "<user>", // IBMi username
-    password: "<password>", // IBMi password
-    driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
-    connectionStringParams: {
-      // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-      DBQ: "MYLIB", // library or schema that holds the tables
+    host: "your-ibm-i-host",
+    database: "*LOCAL",
+    user: "your-username",
+    password: "your-password",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: { 
+      ALLOWPROCCALLS: 1, 
+      CMT: 0, 
+      DBQ: "MYLIB" 
     },
   },
-  pool: {
-    min: 2,
-    max: 10,
-  },
+  pool: { min: 2, max: 10 },
 });
 
-const query = db.select("*").from("table").where({ foo: "bar" });
-
-query
-  .then((result) => console.log(result))
-  .catch((err) => console.error(err))
-  .finally(() => process.exit());
+// Example query
+db.select("*")
+  .from("MYTABLE")
+  .where({ STATUS: "A" })
+  .then(results => console.log(results))
+  .catch(error => console.error("Database error:", error))
+  .finally(() => db.destroy());
 ```
 
 ### ESM
 
-```javascript
+```js
 import knex from "knex";
 import { DB2Dialect } from "@bdkinc/knex-ibmi";
 
-/**
- * @type {import("@bdkinc/knex-ibmi").DB2Config}
- */
+/** @type {import("@bdkinc/knex-ibmi").DB2Config} */
 const config = {
   client: DB2Dialect,
   connection: {
-    host: "localhost", // hostname or ip address of server
-    database: "*LOCAL", // usually named in your odbc.ini connection
-    user: "<user>", // IBMi username
-    password: "<password>", // IBMi password
-    driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
-    connectionStringParams: {
-      // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-      DBQ: "MYLIB", // library or schema that holds the tables
+    host: "your-ibm-i-host",
+    database: "*LOCAL",
+    user: "your-username",
+    password: "your-password",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: { 
+      ALLOWPROCCALLS: 1, 
+      CMT: 0, 
+      DBQ: "MYLIB" 
     },
   },
-  pool: {
-    min: 2,
-    max: 10,
-  },
+  pool: { min: 2, max: 10 },
 };
 
 const db = knex(config);
 
 try {
-  const data = await db.select("*").from("table").where({ foo: "bar" });
-  console.log(data);
-} catch (err) {
-  throw new Error(err);
+  const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
+  console.log(results);
+} catch (error) {
+  console.error("Database error:", error);
 } finally {
-  process.exit();
+  await db.destroy();
 }
 ```
 
 ### TypeScript
 
-```typescript
+```ts
 import { knex } from "knex";
 import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 
 const config: DB2Config = {
   client: DB2Dialect,
   connection: {
-    host: "localhost", // hostname or ip address of server
-    database: "*LOCAL", // usually named in your odbc.ini connection
-    user: "<user>", // IBMi username
-    password: "<password>", // IBMi password
-    driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
-    connectionStringParams: {
-      // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-      DBQ: "MYLIB", // library or schema that holds the tables
+    host: "your-ibm-i-host",
+    database: "*LOCAL",
+    user: "your-username",
+    password: "your-password",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: { 
+      ALLOWPROCCALLS: 1, 
+      CMT: 0, 
+      DBQ: "MYLIB" 
     },
   },
-  pool: {
-    min: 2,
-    max: 10,
-  },
+  pool: { min: 2, max: 10 },
 };
 
 const db = knex(config);
 
 try {
-  const data = await db.select("*").from("table").where({ foo: "bar" });
-  console.log(data);
-} catch (err) {
-  throw new Error(err);
+  const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
+  console.log(results);
+} catch (error) {
+  console.error("Database error:", error);
 } finally {
-  process.exit();
+  await db.destroy();
 }
 ```
 
-### Streaming example
+### Streaming
 
-```typescript
+```ts
 import { knex } from "knex";
 import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 import { Transform } from "node:stream";
@@ -162,70 +176,60 @@ import { finished } from "node:stream/promises";
 const config: DB2Config = {
   client: DB2Dialect,
   connection: {
-    host: "localhost", // hostname or ip address of server
-    database: "*LOCAL", // usually named in your odbc.ini connection
-    user: "<user>", // IBMi username
-    password: "<password>", // IBMi password
-    driver: "IBM i Access ODBC Driver", // defined in odbcinst.ini
-    connectionStringParams: {
-      // DSN connection string parameters https://www.ibm.com/docs/en/i/7.5?topic=details-connection-string-keywords
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-      DBQ: "MYLIB", // library or schema that holds the tables
+    host: "your-ibm-i-host",
+    database: "*LOCAL",
+    user: "your-username",
+    password: "your-password",
+    driver: "IBM i Access ODBC Driver",
+    connectionStringParams: { 
+      ALLOWPROCCALLS: 1, 
+      CMT: 0, 
+      DBQ: "MYLIB" 
     },
   },
-  pool: {
-    min: 2,
-    max: 10,
-  },
+  pool: { min: 2, max: 10 },
 };
 
 const db = knex(config);
 
 try {
-  const data = await db
-    .select("*")
-    .from("table")
-    .stream({ fetchSize: 1 }); // optional, fetchSize defaults to 1
+  const stream = await db.select("*").from("LARGETABLE").stream({ fetchSize: 100 });
 
-  // use an objectMode transformer
   const transform = new Transform({
     objectMode: true,
-    transform(
-      chunk: any,
-      encoding: BufferEncoding,
-      callback: TransformCallback,
-    ) {
-      // chunk will be an array of objects
-      // the length of the array is the chunk size
-      console.log(chunk);
-      callback(null, chunk);
+    transform(chunk, _enc, cb) {
+      // Process each row
+      console.log("Processing row:", chunk);
+      cb(null, chunk);
     },
   });
 
-  // pipe through the transformer
-  data.pipe(transform);
+  stream.pipe(transform);
+  await finished(stream);
 
-  await finished(data); // db queries are promises, we need to wait until resolved
-
-  // or we can iterate through each record
-  for await (const record of data) {
+  // Alternative: async iteration
+  for await (const record of stream) {
     console.log(record);
   }
-} catch (err) {
-  throw err;
+} catch (error) {
+  console.error("Streaming error:", error);
 } finally {
-  process.exit();
+  await db.destroy();
 }
 ```
 
-## Configuring your driver
+## ODBC Driver Setup
 
-If you don't know the name of your installed driver, then look in `odbcinst.ini`. You can find the full path of the file by running `odbcinst -j`.
-There you should see an entry like the one below:
+If you don't know the name of your installed driver, check `odbcinst.ini`. Find its path with:
+
+```bash
+odbcinst -j
+```
+
+Example entries:
 
 ```
-[IBM i Access ODBC Driver] <== driver name in square brackets
+[IBM i Access ODBC Driver]  # driver name in square brackets
 Description=IBM i Access for Linux ODBC Driver
 Driver=/opt/ibm/iaccess/lib/libcwbodbc.so
 Setup=/opt/ibm/iaccess/lib/libcwbodbcs.so
@@ -244,20 +248,126 @@ DontDLClose=1
 UsageCount=1
 ```
 
-If that still doesn't work, then unixodbc is probably looking for the config files in the wrong directory.
-A common case is that the configs are in `/etc` but your system expects them to be somewhere else.
-In such a case, override the path unixodbc looks in via the `ODBCSYSINI` and `ODBCINI` environment variables.
-E.g., `ODBCINI=/etc ODBCSYSINI=/etc`.
+If unixODBC is using the wrong config directory (e.g., your configs are in `/etc` but it expects elsewhere), set:
+
+```bash
+export ODBCINI=/etc
+export ODBCSYSINI=/etc
+```
 
 ## Bundling with Vite
-If you are bundling your application with Vite, then you will need to add this to your config.
 
-```javascript
+If you bundle with Vite, exclude certain native deps during optimize step:
+
+```js
 // vite.config.js
-
 export default {
   optimizeDeps: {
     exclude: ["@mapbox"],
+  },
+};
+```
+
+## Migrations
+
+⚠️ **Important**: Standard Knex migrations don't work reliably with IBM i DB2 due to auto-commit DDL operations and locking issues.
+
+### Recommended: Use Built-in IBM i Migration System
+
+The knex-ibmi library includes a custom migration system that bypasses Knex's problematic locking mechanism:
+
+```js
+import { createIBMiMigrationRunner } from "@bdkinc/knex-ibmi";
+
+const migrationRunner = createIBMiMigrationRunner(db, {
+  directory: "./migrations",
+  tableName: "KNEX_MIGRATIONS", 
+  schemaName: "MYSCHEMA"
+});
+
+// Run migrations
+await migrationRunner.latest();
+
+// Rollback
+await migrationRunner.rollback();
+
+// Check status
+const pending = await migrationRunner.listPending();
+```
+
+**CLI Usage:** The package includes a built-in CLI that can be used via npm scripts or npx:
+
+```bash
+# Install globally (optional)
+npm install -g @bdkinc/knex-ibmi
+
+# Or use via npx (recommended)
+npx ibmi-migrations migrate:latest    # Run pending migrations
+npx ibmi-migrations migrate:rollback  # Rollback last batch
+npx ibmi-migrations migrate:status    # Show migration status
+npx ibmi-migrations migrate:make create_users_table        # Create new JS migration
+npx ibmi-migrations migrate:make add_email_column -x ts    # Create new TS migration
+
+# Or add to your package.json scripts:
+{
+  "scripts": {
+    "migrate:latest": "ibmi-migrations migrate:latest",
+    "migrate:rollback": "ibmi-migrations migrate:rollback",
+    "migrate:status": "ibmi-migrations migrate:status",
+    "migrate:make": "ibmi-migrations migrate:make"
   }
 }
+
+# Then run with npm:
+npm run migrate:latest
+npm run migrate:status
 ```
+
+**Full CLI API (similar to Knex):**
+```bash
+ibmi-migrations migrate:latest         # Run all pending migrations
+ibmi-migrations migrate:rollback       # Rollback last migration batch  
+ibmi-migrations migrate:status         # Show detailed migration status
+ibmi-migrations migrate:currentVersion # Show current migration version
+ibmi-migrations migrate:list           # List all migrations
+ibmi-migrations migrate:make <name>    # Create new migration file
+
+# Legacy aliases (backward compatibility):
+ibmi-migrations latest                 # Same as migrate:latest
+ibmi-migrations rollback               # Same as migrate:rollback
+ibmi-migrations status                 # Same as migrate:status
+
+# Options:
+ibmi-migrations migrate:status --env production
+ibmi-migrations migrate:latest --knexfile ./config/knexfile.js
+ibmi-migrations migrate:make create_users_table
+ibmi-migrations migrate:make add_email_column -x ts      # TypeScript migration
+```
+
+📖 **See [MIGRATIONS.md](./MIGRATIONS.md) for complete documentation**
+
+### Alternative: Standard Knex with Transactions Disabled
+
+If you must use standard Knex migrations, disable transactions to avoid issues:
+
+```js
+/** @type {import("@bdkinc/knex-ibmi").DB2Config} */
+const config = {
+  client: DB2Dialect,
+  connection: { /* your connection config */ },
+  migrations: {
+    disableTransactions: true, // Required for IBM i
+    directory: './migrations',
+    tableName: 'knex_migrations',
+  },
+};
+```
+
+**Warning**: Standard Knex migrations may still hang on lock operations. The built-in IBM i migration system is strongly recommended.
+
+## Links
+
+- Knex: https://knexjs.org/
+- Knex repo: https://github.com/knex/knex
+- ODBC driver: https://github.com/IBM/node-odbc
+- IBM i OSS docs: https://ibmi-oss-docs.readthedocs.io/

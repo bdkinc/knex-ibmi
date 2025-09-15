@@ -1,8 +1,10 @@
-import TableCompiler from "knex/lib/schema/tablecompiler";
-import isObject from "lodash/isObject";
+import TableCompiler from "knex/lib/schema/tablecompiler.js";
 import { Connection } from "odbc";
 
 class IBMiTableCompiler extends TableCompiler {
+  // Use type assertion to work around ESM import interface issues
+  [key: string]: any;
+
   createQuery(columns: { sql: any[] }, ifNot: any, like: any) {
     let createStatement = ifNot
       ? `if object_id('${this.tableName()}', 'U') is null `
@@ -42,25 +44,30 @@ class IBMiTableCompiler extends TableCompiler {
 
   unique(
     columns: string[],
-    indexName: { indexName: any; deferrable: any; predicate: any },
+    indexName:
+      | string
+      | { indexName?: string; deferrable?: string; predicate?: any }
   ) {
     let deferrable: string = "";
     let predicate: any;
+    let finalIndexName: string | undefined;
 
-    if (isObject(indexName)) {
-      deferrable = indexName.deferrable;
+    if (typeof indexName === "object" && indexName !== null) {
+      deferrable = indexName.deferrable || "";
       predicate = indexName.predicate;
-      indexName = indexName.indexName;
+      finalIndexName = indexName.indexName;
+    } else {
+      finalIndexName = indexName;
     }
 
     if (deferrable && deferrable !== "not deferrable") {
       this.client.logger.warn?.(
-        `IBMi: unique index \`${indexName}\` will not be deferrable ${deferrable}.`,
+        `IBMi: unique index \`${finalIndexName}\` will not be deferrable ${deferrable}.`
       );
     }
 
-    indexName = indexName
-      ? this.formatter.wrap(indexName)
+    const wrappedIndexName = finalIndexName
+      ? this.formatter.wrap(finalIndexName)
       : this._indexCommand("unique", this.tableNameRaw, columns);
     columns = this.formatter.columnize(columns);
 
@@ -69,7 +76,7 @@ class IBMiTableCompiler extends TableCompiler {
       : "";
 
     this.pushQuery(
-      `create unique index ${indexName} on ${this.tableName()} (${columns})${predicateQuery}`,
+      `create unique index ${wrappedIndexName} on ${this.tableName()} (${columns})${predicateQuery}`
     );
   }
 

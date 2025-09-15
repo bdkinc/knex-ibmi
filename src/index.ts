@@ -1,5 +1,5 @@
 import process from "node:process";
-import { knex, Knex } from "knex";
+import knex, { Knex } from "knex";
 import odbc, { Connection } from "odbc";
 import SchemaCompiler from "./schema/ibmi-compiler";
 import TableCompiler from "./schema/ibmi-tablecompiler";
@@ -7,6 +7,10 @@ import ColumnCompiler from "./schema/ibmi-columncompiler";
 import Transaction from "./execution/ibmi-transaction";
 import QueryCompiler from "./query/ibmi-querycompiler";
 import { Readable } from "node:stream";
+import {
+  IBMiMigrationRunner,
+  createIBMiMigrationRunner,
+} from "./migrations/ibmi-migration-runner";
 
 interface QueryObject {
   response?: {
@@ -32,19 +36,20 @@ enum SqlMethod {
 
 class DB2Client extends knex.Client {
   constructor(config: Knex.Config<DB2Config>) {
+    console.log("🎯 DB2Client constructor called!");
     super(config);
     this.driverName = "odbc";
 
     if (this.dialect && !this.config.client) {
       this.printWarn(
-        `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the future. Please use configuration option 'client' instead.`,
+        `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the future. Please use configuration option 'client' instead.`
       );
     }
 
     const dbClient = this.config.client || this.dialect;
     if (!dbClient) {
       throw new Error(
-        `knex: Required configuration option 'client' is missing.`,
+        `knex: Required configuration option 'client' is missing.`
       );
     }
 
@@ -65,14 +70,37 @@ class DB2Client extends knex.Client {
     }
   }
 
+  // Helper method to safely stringify objects that might have circular references
+  private safeStringify(obj: any, indent: number = 0): string {
+    try {
+      return JSON.stringify(obj, null, indent);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("circular")) {
+        return `[Circular structure - ${typeof obj}]`;
+      }
+      return `[Stringify error - ${typeof obj}]`;
+    }
+  }
+
   _driver() {
     return odbc;
   }
 
-  wrapIdentifierImpl(value: any) {
+  wrapIdentifierImpl(value: string) {
     // override default wrapper (")
     // we don't want to use it since
     // it makes identifier case-sensitive in DB2
+
+    // Fix case sensitivity issues for IBM i migration tables
+    // Normalize migration-related table names to be consistent
+    if (
+      value.includes("KNEX_MIGRATIONS") ||
+      value.includes("knex_migrations")
+    ) {
+      // Ensure migration table names are uppercase for consistency
+      return value.toUpperCase();
+    }
+
     return value;
   }
 
@@ -109,8 +137,10 @@ class DB2Client extends knex.Client {
     }
 
     this.printDebug(
-      "connection config: " + this._getConnectionString(connectionConfig),
+      "connection config: " + this._getConnectionString(connectionConfig)
     );
+
+    let connection: Connection;
 
     if (this.config?.pool) {
       const poolConfig = {
@@ -121,12 +151,14 @@ class DB2Client extends knex.Client {
         reuseConnection: true,
       };
       const pool = await this.driver.pool(poolConfig);
-      return await pool.connect();
+      connection = await pool.connect();
+    } else {
+      connection = await this.driver.connect(
+        this._getConnectionString(connectionConfig)
+      );
     }
 
-    return await this.driver.connect(
-      this._getConnectionString(connectionConfig),
-    );
+    return connection;
   }
 
   // Used to explicitly close a connection, called internally by the pool manager
@@ -141,13 +173,13 @@ class DB2Client extends knex.Client {
       connectionConfig.connectionStringParams || {};
 
     const connectionStringExtension = Object.keys(
-      connectionStringParams,
+      connectionStringParams
     ).reduce((result, key) => {
       const value = connectionStringParams[key];
       return `${result}${key}=${value};`;
     }, "");
 
-    return `${
+    return (
       `DRIVER=${connectionConfig.driver};` +
       `SYSTEM=${connectionConfig.host};` +
       `HOSTNAME=${connectionConfig.host};` +
@@ -156,23 +188,83 @@ class DB2Client extends knex.Client {
       `UID=${connectionConfig.user};` +
       `PWD=${connectionConfig.password};` +
       connectionStringExtension
-    }`;
+    );
   }
 
-// Runs the query on the specified connection, providing the bindings
+  // Runs the query on the specified connection, providing the bindings
   async _query(connection: Connection, obj: any) {
     const queryObject = this.normalizeQueryObject(obj);
     const method = this.determineQueryMethod(queryObject);
     queryObject.sqlMethod = method;
 
-    if (this.isSelectMethod(method)) {
-      await this.executeSelectQuery(connection, queryObject);
-    } else {
-      await this.executeStatementQuery(connection, queryObject);
+    // Debug migration queries (only if DEBUG environment variable is set)
+    if (
+      process.env.DEBUG === "true" &&
+      queryObject.sql &&
+      (queryObject.sql.toLowerCase().includes("create table") ||
+        queryObject.sql.toLowerCase().includes("knex_migrations"))
+    ) {
+      this.printDebug(
+        `Executing ${method} query: ${queryObject.sql.substring(0, 200)}...`
+      );
+      if (queryObject.bindings?.length) {
+        this.printDebug(`Bindings: ${JSON.stringify(queryObject.bindings)}`);
+      }
     }
 
-    this.printDebug(queryObject);
-    return queryObject;
+    try {
+      const startTime = Date.now();
+      if (this.isSelectMethod(method)) {
+        await this.executeSelectQuery(connection, queryObject);
+      } else {
+        await this.executeStatementQuery(connection, queryObject);
+      }
+      const endTime = Date.now();
+
+      if (
+        process.env.DEBUG === "true" &&
+        queryObject.sql &&
+        (queryObject.sql.toLowerCase().includes("create table") ||
+          queryObject.sql.toLowerCase().includes("knex_migrations"))
+      ) {
+        this.printDebug(`${method} completed in ${endTime - startTime}ms`);
+      }
+
+      this.printDebug(`Query completed: ${method} (${endTime - startTime}ms)`);
+      return queryObject;
+    } catch (error: any) {
+      // Enhanced error handling for connection issues
+      if (this.isConnectionError(error)) {
+        this.printError(
+          `Connection error during ${method} query: ${error.message}`
+        );
+
+        // For critical migration operations, retry once before failing
+        if (queryObject.sql?.toLowerCase().includes("systables")) {
+          this.printDebug("Retrying hasTable query due to connection error...");
+          try {
+            // Wait a moment and retry the query
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            if (this.isSelectMethod(method)) {
+              await this.executeSelectQuery(connection, queryObject);
+            } else {
+              await this.executeStatementQuery(connection, queryObject);
+            }
+            return queryObject;
+          } catch (retryError: any) {
+            this.printError(`Retry failed: ${retryError.message}`);
+            // If retry fails, return empty result to prevent migration corruption
+            queryObject.response = { rows: [], rowCount: 0 };
+            return queryObject;
+          }
+        }
+
+        throw new Error(
+          `Connection closed during ${method} operation - IBM i DB2 DDL operations cause implicit commits`
+        );
+      }
+      throw error;
+    }
   }
 
   private normalizeQueryObject(obj: any): any {
@@ -194,16 +286,26 @@ class DB2Client extends knex.Client {
     return method === "select" || method === "first" || method === "pluck";
   }
 
-  private async executeSelectQuery(connection: Connection, obj: { sql: string, bindings: any[], response: unknown }): Promise<void> {
-    const rows: Record<any, any>[] = await connection.query(obj.sql, obj.bindings);
+  private async executeSelectQuery(
+    connection: Connection,
+    obj: { sql: string; bindings: any[]; response: unknown }
+  ): Promise<void> {
+    const rows: Record<any, any>[] = await connection.query(
+      obj.sql,
+      obj.bindings
+    );
     if (rows) {
       obj.response = { rows, rowCount: rows.length };
     }
   }
 
-  private async executeStatementQuery(connection: Connection, obj: any): Promise<void> {
+  private async executeStatementQuery(
+    connection: Connection,
+    obj: any
+  ): Promise<void> {
+    let statement: any;
     try {
-      const statement = await connection.createStatement();
+      statement = await connection.createStatement();
       await statement.prepare(obj.sql);
 
       if (obj.bindings) {
@@ -215,30 +317,93 @@ class DB2Client extends knex.Client {
 
       obj.response = this.formatStatementResponse(result);
     } catch (err: any) {
-      this.printError(JSON.stringify(err));
+      // Special handling for UPDATE/DELETE queries that affect 0 rows
+      // Some ODBC drivers signal 0-row DML via empty error/"no data" (SQLSTATE 02000)
+      const sql = (obj.sql || "").toLowerCase();
+      const isDml =
+        obj.sqlMethod === SqlMethod.UPDATE ||
+        sql.includes(" update ") ||
+        sql.startsWith("update") ||
+        obj.sqlMethod === SqlMethod.DELETE ||
+        sql.includes(" delete ") ||
+        sql.startsWith("delete");
+
+      const odbcErrors = err?.odbcErrors;
+      const isEmptyOdbcError =
+        Array.isArray(odbcErrors) && odbcErrors.length === 0;
+      const hasNoDataState = Array.isArray(odbcErrors)
+        ? odbcErrors.some(
+            (e: any) =>
+              String(e?.state || e?.SQLSTATE || "").toUpperCase() === "02000"
+          )
+        : false;
+
+      if (
+        isDml &&
+        (isEmptyOdbcError || hasNoDataState || this.isNoDataError(err))
+      ) {
+        this.printWarn(
+          `ODBC signaled no-data for ${sql.includes("update") ? "UPDATE" : "DELETE"}; treating as 0 rows affected`
+        );
+        obj.response = { rows: [], rowCount: 0 };
+        return;
+      }
+
+      this.printError(this.safeStringify(err));
+      throw err;
+    } finally {
+      // Ensure statement is closed to avoid resource leaks/hangs
+      if (statement && typeof statement.close === "function") {
+        try {
+          await statement.close();
+        } catch (closeErr) {
+          // Ignore close errors, log in debug mode only
+          this.printDebug(
+            `Error closing statement: ${this.safeStringify(closeErr, 2)}`
+          );
+        }
+      }
     }
   }
 
-  private formatStatementResponse(result: any): { rows: any; rowCount: number } {
-    // TODO: evaluate if this is necessary
-    // this is hacky we check the SQL for the ID column
-    // we check for the IDENTITY scalar function
-    // if that function is present, then we just return the value of the
-    // IDENTITY column
-    if (result.statement.includes("IDENTITY_VAL_LOCAL()")) {
+  private isNoDataError(error: any): boolean {
+    if (!error) return false;
+    const msg = String(error?.message || error || "").toLowerCase();
+    // Match common indicators of 0-row DML reported as error
+    return (
+      msg.includes("02000") ||
+      msg.includes("no data") ||
+      msg.includes("no rows") ||
+      msg.includes("0 rows")
+    );
+  }
+
+  /**
+   * Format statement response from ODBC driver
+   * Handles special case for IDENTITY_VAL_LOCAL() function
+   */
+  private formatStatementResponse(result: any): {
+    rows: any;
+    rowCount: number;
+  } {
+    const isIdentityQuery = result.statement?.includes("IDENTITY_VAL_LOCAL()");
+
+    if (isIdentityQuery && result.columns?.length > 0) {
       return {
-        rows: result.map((row: { [x: string]: any }) =>
-          result.columns && result.columns?.length > 0
-            ? row[result.columns[0].name]
-            : row,
+        rows: result.map(
+          (row: { [x: string]: any }) => row[result.columns[0].name]
         ),
         rowCount: result.count,
       };
-    } else {
-      return { rows: result, rowCount: result.count };
     }
-  }
 
+    // Normalize result for DML (UPDATE/DELETE/INSERT) to surface rowCount consistently
+    const rowCount = typeof result?.count === "number" ? result.count : 0;
+    return {
+      rows: result,
+      rowCount,
+    };
+  }
 
   async _stream(
     connection: Connection,
@@ -246,7 +411,7 @@ class DB2Client extends knex.Client {
     stream: any,
     options: {
       fetchSize?: number;
-    },
+    }
   ) {
     if (!obj.sql) throw new Error("A query is required to stream results");
 
@@ -263,7 +428,9 @@ class DB2Client extends knex.Client {
         },
         (error, cursor) => {
           if (error) {
-            this.printError(JSON.stringify(error, null, 2));
+            this.printError(this.safeStringify(error, 2));
+            stream.emit("error", error);
+            reject(error);
             return;
           }
 
@@ -273,7 +440,7 @@ class DB2Client extends knex.Client {
             stream.emit("error", err);
           });
           readableStream.pipe(stream);
-        },
+        }
       );
     });
   }
@@ -285,7 +452,7 @@ class DB2Client extends knex.Client {
       read() {
         cursor.fetch((error: unknown, result: unknown) => {
           if (error) {
-            parentThis.printError(JSON.stringify(error, null, 2));
+            parentThis.printError(parentThis.safeStringify(error, 2));
           }
 
           if (!cursor.noData) {
@@ -307,51 +474,98 @@ class DB2Client extends knex.Client {
   }
 
   transaction(container: any, config: any, outerTx: any): Knex.Transaction {
-    return new Transaction(this, container, config, outerTx);
+    return new (Transaction as any)(this, container, config, outerTx);
   }
 
   schemaCompiler(tableBuilder: any) {
-    return new SchemaCompiler(this, tableBuilder);
+    return new (SchemaCompiler as any)(this, tableBuilder);
   }
 
   tableCompiler(tableBuilder: any) {
-    return new TableCompiler(this, tableBuilder);
+    return new (TableCompiler as any)(this, tableBuilder);
   }
 
   columnCompiler(tableCompiler: any, columnCompiler: any) {
-    return new ColumnCompiler(this, tableCompiler, columnCompiler);
+    return new (ColumnCompiler as any)(this, tableCompiler, columnCompiler);
   }
 
   queryCompiler(builder: Knex.QueryBuilder, bindings?: any[]) {
-    return new QueryCompiler(this, builder, bindings);
+    return new (QueryCompiler as any)(this, builder, bindings);
+  }
+
+  // Create IBM i-specific migration runner that bypasses Knex's problematic locking system
+  createMigrationRunner(
+    config?: Partial<
+      import("./migrations/ibmi-migration-runner").IBMiMigrationConfig
+    >
+  ) {
+    // Pass the knex instance from the client context
+    const knexInstance = (this as any).context || (this as any);
+    return createIBMiMigrationRunner(knexInstance, config);
   }
 
   processResponse(obj: QueryObject | null, runner: any): any {
     if (obj === null) return null;
 
-    const validationResult = this.validateResponse(obj);
-    if (validationResult !== null) return validationResult;
-
     const { response } = obj;
 
+    // If there's a custom output function, use it directly without validation
+    // This allows custom queries like hasTable to handle their own response format
     if (obj.output) {
-      return obj.output(runner, response);
+      try {
+        const result = obj.output(runner, response);
+        return result;
+      } catch (error: any) {
+        // Enhanced error handling for custom output functions
+        this.printError(
+          `Custom output function failed: ${error.message || error}`
+        );
+        if (this.isConnectionError(error)) {
+          throw new Error(
+            "Connection closed during query processing - consider using migrations.disableTransactions: true for DDL operations"
+          );
+        }
+        throw error;
+      }
     }
+
+    // Only validate for standard SQL methods that expect rows structure
+    const validationResult = this.validateResponse(obj);
+    if (validationResult !== null) return validationResult;
 
     return this.processSqlMethod(obj);
   }
 
   private validateResponse(obj: QueryObject): any {
     if (!obj.response) {
-      this.printDebug("response undefined" + obj);
-      return undefined;
+      this.printDebug("response undefined" + JSON.stringify(obj));
+      return null;
     }
 
+    // For non-select methods, it's fine if rows is empty/undefined as long as rowCount is set.
+    // Do not short-circuit here; allow processSqlMethod to normalize the return value.
+
     if (!obj.response.rows) {
-      return this.printError("rows undefined" + obj);
+      this.printError("rows undefined" + JSON.stringify(obj));
+      return null;
     }
 
     return null;
+  }
+
+  private isConnectionError(error: any): boolean {
+    const errorMessage = (
+      error.message ||
+      error.toString ||
+      error
+    ).toLowerCase();
+    return (
+      errorMessage.includes("connection") &&
+      (errorMessage.includes("closed") ||
+        errorMessage.includes("invalid") ||
+        errorMessage.includes("terminated") ||
+        errorMessage.includes("not connected"))
+    );
   }
 
   private processSqlMethod(obj: QueryObject): any {
@@ -369,7 +583,8 @@ class DB2Client extends knex.Client {
       case SqlMethod.DELETE:
       case SqlMethod.DELETE_ALT:
       case SqlMethod.UPDATE:
-        return obj.select ? rows : rowCount;
+        // Align with MySQL: return affected rows as a number for DML
+        return obj.select ? rows : (rowCount ?? 0);
       case SqlMethod.COUNTER:
         return rowCount;
       default:
@@ -420,12 +635,13 @@ interface DB2ConnectionParams {
     | "SQL_DESC_SEARCHABLE"
     | "SQL_DESC_UNNAMED"
     | "SQL_DESC_UPDATABLE";
+  TRUEAUTOCOMMIT?: 0 | 1;
 }
 
 interface DB2ConnectionConfig {
   database: string;
   host: string;
-  port: 50000 | number;
+  port: 8471 | 9471 | number;
   user: string;
   password: string;
   driver: "IBM i Access ODBC Driver" | string;
@@ -439,4 +655,5 @@ export interface DB2Config extends Knex.Config {
 }
 
 export const DB2Dialect = DB2Client;
+export { IBMiMigrationRunner, createIBMiMigrationRunner };
 export default DB2Client;
