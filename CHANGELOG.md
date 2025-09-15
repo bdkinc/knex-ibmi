@@ -1,5 +1,8 @@
 ## Unreleased - September 12th, 2025
 
+- **BREAKING CHANGE**: Migration configuration change required for IBM i DB2 compatibility.
+  - **SOLUTION**: Set `migrations: { disableTransactions: true }` in knex config.
+  - **REASON**: IBM i DB2 implicitly commits transactions on DDL operations (like MySQL), causing connection closure and "table already exists" errors during migration setup.
 - Fix: Case-insensitive `hasTable` check for IBM i. Use `UPPER(TABLE_NAME)`/`UPPER(TABLE_SCHEMA)` with parameter bindings to prevent false negatives that caused duplicate creation of `KNEX_MIGRATIONS` and `KNEX_MIGRATIONS_LOCK` tables.
 - Fix: Proper error propagation.
 	- Re-throw errors in statement execution so callers/tests receive rejections.

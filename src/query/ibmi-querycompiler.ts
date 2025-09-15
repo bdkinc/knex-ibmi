@@ -1,7 +1,10 @@
-import QueryCompiler from "knex/lib/query/querycompiler";
-import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter";
+import QueryCompiler from "knex/lib/query/querycompiler.js";
+import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter.js";
 
 class IBMiQueryCompiler extends QueryCompiler {
+  // Use type assertion to work around ESM import interface issues
+  [key: string]: any;
+
   private formatTimestampLocal(date: Date): string {
     const pad = (n: number) => String(n).padStart(2, "0");
     const y = date.getFullYear();

@@ -268,6 +268,103 @@ export default {
 };
 ```
 
+## Migrations
+
+⚠️ **Important**: Standard Knex migrations don't work reliably with IBM i DB2 due to auto-commit DDL operations and locking issues.
+
+### Recommended: Use Built-in IBM i Migration System
+
+The knex-ibmi library includes a custom migration system that bypasses Knex's problematic locking mechanism:
+
+```js
+import { createIBMiMigrationRunner } from "@bdkinc/knex-ibmi";
+
+const migrationRunner = createIBMiMigrationRunner(db, {
+  directory: "./migrations",
+  tableName: "KNEX_MIGRATIONS", 
+  schemaName: "MYSCHEMA"
+});
+
+// Run migrations
+await migrationRunner.latest();
+
+// Rollback
+await migrationRunner.rollback();
+
+// Check status
+const pending = await migrationRunner.listPending();
+```
+
+**CLI Usage:** The package includes a built-in CLI that can be used via npm scripts or npx:
+
+```bash
+# Install globally (optional)
+npm install -g @bdkinc/knex-ibmi
+
+# Or use via npx (recommended)
+npx ibmi-migrations migrate:latest    # Run pending migrations
+npx ibmi-migrations migrate:rollback  # Rollback last batch
+npx ibmi-migrations migrate:status    # Show migration status
+npx ibmi-migrations migrate:make create_users_table        # Create new JS migration
+npx ibmi-migrations migrate:make add_email_column -x ts    # Create new TS migration
+
+# Or add to your package.json scripts:
+{
+  "scripts": {
+    "migrate:latest": "ibmi-migrations migrate:latest",
+    "migrate:rollback": "ibmi-migrations migrate:rollback",
+    "migrate:status": "ibmi-migrations migrate:status",
+    "migrate:make": "ibmi-migrations migrate:make"
+  }
+}
+
+# Then run with npm:
+npm run migrate:latest
+npm run migrate:status
+```
+
+**Full CLI API (similar to Knex):**
+```bash
+ibmi-migrations migrate:latest         # Run all pending migrations
+ibmi-migrations migrate:rollback       # Rollback last migration batch  
+ibmi-migrations migrate:status         # Show detailed migration status
+ibmi-migrations migrate:currentVersion # Show current migration version
+ibmi-migrations migrate:list           # List all migrations
+ibmi-migrations migrate:make <name>    # Create new migration file
+
+# Legacy aliases (backward compatibility):
+ibmi-migrations latest                 # Same as migrate:latest
+ibmi-migrations rollback               # Same as migrate:rollback
+ibmi-migrations status                 # Same as migrate:status
+
+# Options:
+ibmi-migrations migrate:status --env production
+ibmi-migrations migrate:latest --knexfile ./config/knexfile.js
+ibmi-migrations migrate:make create_users_table
+ibmi-migrations migrate:make add_email_column -x ts      # TypeScript migration
+```
+
+📖 **See [MIGRATIONS.md](./MIGRATIONS.md) for complete documentation**
+
+### Alternative: Standard Knex with Transactions Disabled
+
+If you must use standard Knex migrations, disable transactions to avoid issues:
+
+```js
+/** @type {import("@bdkinc/knex-ibmi").DB2Config} */
+const config = {
+  client: DB2Dialect,
+  connection: { /* your connection config */ },
+  migrations: {
+    disableTransactions: true, // Required for IBM i
+    directory: './migrations',
+    tableName: 'knex_migrations',
+  },
+};
+```
+
+**Warning**: Standard Knex migrations may still hang on lock operations. The built-in IBM i migration system is strongly recommended.
+
 ## Links
 
 - Knex: https://knexjs.org/

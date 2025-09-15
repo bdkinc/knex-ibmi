@@ -1,7 +1,10 @@
-import TableCompiler from "knex/lib/schema/tablecompiler";
+import TableCompiler from "knex/lib/schema/tablecompiler.js";
 import { Connection } from "odbc";
 
 class IBMiTableCompiler extends TableCompiler {
+  // Use type assertion to work around ESM import interface issues
+  [key: string]: any;
+
   createQuery(columns: { sql: any[] }, ifNot: any, like: any) {
     let createStatement = ifNot
       ? `if object_id('${this.tableName()}', 'U') is null `

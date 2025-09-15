@@ -1,17 +1,28 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.3.24",
+  "version": "0.3.56",
   "description": "Knex dialect for IBMi",
   "main": "dist/index.js",
+  "module": "dist/index.mjs", 
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
   "files": [
     "/dist"
   ],
+  "bin": {
+    "ibmi-migrations": "./dist/cli.cjs"
+  },
   "engines": {
     "node": ">=16"
   },
   "scripts": {
-    "build": "tsup src/index.ts --dts",
+    "build": "tsup && node scripts/fix-cli.mjs",
     "test": "ts-mocha -p tsconfig.json --import=tsx test/**/*.spec.ts test/**/**/*.spec.ts --exit",
     "lint": "eslint . --ext .ts",
     "format": "prettier . --write"
