@@ -255,7 +255,9 @@ function showHelp() {
   console.log(
     "  --knexfile <file>      - Specify knexfile path (default: ./knexfile.js)"
   );
-  console.log("  -x <extension>         - File extension for new migrations (js|ts)");
+  console.log(
+    "  -x <extension>         - File extension for new migrations (js|ts)"
+  );
   console.log("  --help                 - Show this help message");
   console.log("");
   console.log("Examples:");
