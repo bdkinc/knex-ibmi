@@ -169,49 +169,36 @@ try {
 
 ### Streaming
 
+There are two primary ways to consume a result stream: (1) classic Node stream piping with transform stages, and (2) async iteration with `for await` (which can be easier to reason about). Use a `fetchSize` to control how many rows are fetched from the driver per batch.
+
 ```ts
 import { knex } from "knex";
 import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 import { Transform } from "node:stream";
 import { finished } from "node:stream/promises";
 
-const config: DB2Config = {
-  client: DB2Dialect,
-  connection: {
-    host: "your-ibm-i-host",
-    database: "*LOCAL",
-    user: "your-username",
-    password: "your-password",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { 
-      ALLOWPROCCALLS: 1, 
-      CMT: 0, 
-      DBQ: "MYLIB" 
-    },
-  },
-  pool: { min: 2, max: 10 },
-};
-
+const config: DB2Config = { /* ...same as earlier examples... */ };
 const db = knex(config);
 
 try {
-  const stream = await db.select("*").from("LARGETABLE").stream({ fetchSize: 100 });
+  const stream = await db("LARGETABLE").select("*").stream({ fetchSize: 100 });
 
+  // Approach 1: Pipe through a Transform stream
   const transform = new Transform({
     objectMode: true,
-    transform(chunk, _enc, cb) {
-      // Process each row
-      console.log("Processing row:", chunk);
-      cb(null, chunk);
+    transform(row, _enc, cb) {
+      // Process each row (side effects, enrichment, filtering, etc.)
+      console.log("Transforming row id=", row.ID);
+      cb(null, row);
     },
   });
-
   stream.pipe(transform);
-  await finished(stream);
+  await finished(stream); // Wait until piping completes
 
-  // Alternative: async iteration
-  for await (const record of stream) {
-    console.log(record);
+  // Approach 2: Async iteration (recommended for simplicity)
+  const iterStream = await db("LARGETABLE").select("*").stream({ fetchSize: 200 });
+  for await (const row of iterStream) {
+    console.log("Iter row id=", row.ID);
   }
 } catch (error) {
   console.error("Streaming error:", error);
@@ -334,11 +321,6 @@ ibmi-migrations migrate:currentVersion # Show current migration version
 ibmi-migrations migrate:list           # List all migrations
 ibmi-migrations migrate:make <name>    # Create new migration file
 
-# Legacy aliases (backward compatibility):
-ibmi-migrations latest                 # Same as migrate:latest
-ibmi-migrations rollback               # Same as migrate:rollback
-ibmi-migrations status                 # Same as migrate:status
-
 # Options:
 ibmi-migrations migrate:status --env production
 ibmi-migrations migrate:latest --knexfile ./config/knexfile.js
@@ -379,7 +361,7 @@ const db = knex({
 });
 ```
 
-- `auto` (default): Generates a single INSERT with multiple VALUES lists and wraps in `select * from FINAL TABLE(...)`. Returns all rows as provided by DB2 (may not include identities individually when only `IDENTITY_VAL_LOCAL()` is available without explicit returning list).
+- `auto` (default): Generates a single INSERT with multiple VALUES lists. For `.returning('*')` or no explicit column list it returns all inserted rows (lenient fallback). Identity values are whatever DB2 ODBC surfaces for that multi-row statement.
 - `sequential`: Compiler shows a single-row statement (first row) but at execution time each row is inserted individually inside a loop to reliably collect identity values (using `IDENTITY_VAL_LOCAL()` per row). Suitable when you need each generated identity.
 - `disabled`: Falls back to legacy behavior: only the first row is inserted (others ignored). Useful for strict backward compatibility.
 
@@ -387,24 +369,25 @@ If you specify `.returning(['COL1', 'COL2'])` with multi-row inserts, those colu
 
 ## Returning Behavior (INSERT / UPDATE / DELETE)
 
-IBM i DB2 via ODBC has limited native `RETURNING` support. This dialect implements emulation strategies:
+Native `RETURNING` is not broadly supported over ODBC on IBM i. The dialect provides pragmatic emulation:
 
 ### INSERT
-- Wrapped as `select IDENTITY_VAL_LOCAL()` or `select *` from `FINAL TABLE(insert ...)`.
-- Multi-row `auto` uses `select *` unless explicit returning columns provided.
-- Sequential strategy gathers per-row identity values by executing each row separately.
+- `auto` multi-row: generates a single multi-values INSERT. When no explicit column list is requested it returns all inserted rows (`*`) as a lenient fallback. Some installations may see this internally wrapped using a `SELECT * FROM FINAL TABLE( INSERT ... )` pattern in logs or debug output; that wrapper is only an implementation detail to surface inserted rows.
+- `sequential`: inserts each row one at a time so it can reliably call `IDENTITY_VAL_LOCAL()` after each insert; builds an array of returned rows.
+- `disabled`: legacy single-row insert behavior; additional rows in the values array are ignored.
 
 ### UPDATE
-- For `.returning(...)` the compiler emits a synthetic `select ... from FINAL TABLE(update ...)` string for readability, but execution actually performs the UPDATE first, then re-selects the updated rows using the original WHERE clause.
-- Ensures compatibility where FINAL TABLE over UPDATE is unreliable.
+- Executes the UPDATE.
+- Re-selects the affected rows using the original WHERE clause when `.returning(...)` is requested.
 
 ### DELETE
-- For `.returning(...)` the dialect selects the target rows first, then issues the DELETE, returning the previously selected data.
-- Compiler shows `select ... from FINAL TABLE(delete ...)` for consistency, though execution uses SELECT+DELETE.
+- Selects the rows to be deleted (capturing requested returning columns or `*`).
+- Executes the DELETE.
+- Returns the previously selected rows.
 
-### Caveats
-- `returning('*')` on large tables may produce large result sets; a warning is logged in debug mode for multi-row inserts.
-- Ambiguous identity retrieval in single-statement multi-row inserts (`auto` strategy) is handled by returning the full row set; if you need ordered identity values, prefer `sequential`.
+### Notes
+- `returning('*')` can be expensive on large result sets—limit the column list when possible.
+- For guaranteed, ordered identity values across many inserted rows use the `sequential` strategy.
 
 ## Configuration Summary
 
@@ -421,27 +404,7 @@ Attach under the root knex config as `ibmi`.
 
 When `ibmi.sequentialInsertTransactional` is `true`, the dialect will attempt `BEGIN` before the per-row loop and `COMMIT` after. On commit failure it will attempt a `ROLLBACK`. If `BEGIN` is not supported, it logs a warning and continues non-transactionally.
 
-## Benchmarks
-
-A simple benchmark script is provided to compare insert strategies:
-
-```bash
-npm run build
-npm run bench:insert -- host.example.com MYUSER MYPASS *LOCAL QGPL rows=2000 strategy=auto
-npm run bench:insert -- host.example.com MYUSER MYPASS *LOCAL QGPL rows=2000 strategy=sequential
-
-# Or using environment variables (database defaults to *LOCAL if omitted):
-export DB2_HOST=host.example.com
-export DB2_USER=MYUSER
-export DB2_PASSWORD=MYPASS
-export DB2_DATABASE='*LOCAL'
-export DB2_SCHEMA=QGPL
-export BENCH_ROWS=3000
-export BENCH_STRATEGY=sequential
-npm run bench:insert
-```
-
-Output includes elapsed time and approximate rows/sec. Use a dedicated schema/library for benchmarking as the script drops and recreates `BM_INSERT_BENCH`.
+<!-- Benchmarks section intentionally removed. Benchmarking is handled in the external test harness project -->
 
 ## Links
 
