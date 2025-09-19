@@ -36,7 +36,6 @@ enum SqlMethod {
 
 class DB2Client extends knex.Client {
   constructor(config: Knex.Config<DB2Config>) {
-    console.log("🎯 DB2Client constructor called!");
     super(config);
     this.driverName = "odbc";
 
@@ -91,16 +90,18 @@ class DB2Client extends knex.Client {
     // we don't want to use it since
     // it makes identifier case-sensitive in DB2
 
-    // Fix case sensitivity issues for IBM i migration tables
-    // Normalize migration-related table names to be consistent
+    if (!value) return value;
+
+    // Handle migration tables specifically - keep simple for now
     if (
       value.includes("KNEX_MIGRATIONS") ||
       value.includes("knex_migrations")
     ) {
-      // Ensure migration table names are uppercase for consistency
       return value.toUpperCase();
     }
 
+    // For now, just return the value as-is to avoid binding issues
+    // IBM i DB2 is case-insensitive by default anyway
     return value;
   }
 
@@ -197,6 +198,21 @@ class DB2Client extends knex.Client {
     const method = this.determineQueryMethod(queryObject);
     queryObject.sqlMethod = method;
 
+    // Special handling for UPDATE with returning clause
+    if (queryObject._ibmiUpdateReturning) {
+      return await this.executeUpdateReturning(connection, queryObject);
+    }
+
+    // Sequential multi-row insert execution path
+    if (queryObject._ibmiSequentialInsert) {
+      return await this.executeSequentialInsert(connection, queryObject);
+    }
+
+    // DELETE ... RETURNING emulation
+    if (queryObject._ibmiDeleteReturning) {
+      return await this.executeDeleteReturning(connection, queryObject);
+    }
+
     // Debug migration queries (only if DEBUG environment variable is set)
     if (
       process.env.DEBUG === "true" &&
@@ -234,36 +250,189 @@ class DB2Client extends knex.Client {
       return queryObject;
     } catch (error: any) {
       // Enhanced error handling for connection issues
+      const wrappedError = this.wrapError(error, method, queryObject);
+
       if (this.isConnectionError(error)) {
         this.printError(
           `Connection error during ${method} query: ${error.message}`
         );
 
         // For critical migration operations, retry once before failing
-        if (queryObject.sql?.toLowerCase().includes("systables")) {
-          this.printDebug("Retrying hasTable query due to connection error...");
-          try {
-            // Wait a moment and retry the query
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            if (this.isSelectMethod(method)) {
-              await this.executeSelectQuery(connection, queryObject);
-            } else {
-              await this.executeStatementQuery(connection, queryObject);
-            }
-            return queryObject;
-          } catch (retryError: any) {
-            this.printError(`Retry failed: ${retryError.message}`);
-            // If retry fails, return empty result to prevent migration corruption
-            queryObject.response = { rows: [], rowCount: 0 };
-            return queryObject;
-          }
+        if (this.shouldRetryQuery(queryObject, method)) {
+          return await this.retryQuery(connection, queryObject, method);
         }
 
-        throw new Error(
-          `Connection closed during ${method} operation - IBM i DB2 DDL operations cause implicit commits`
+        throw wrappedError;
+      }
+      throw wrappedError;
+    }
+  }
+
+  /**
+   * Execute UPDATE with returning clause using transaction + SELECT approach
+   * Since IBM i DB2 doesn't support FINAL TABLE with UPDATE, we:
+   * 1. Execute the UPDATE statement
+   * 2. Execute a SELECT to get the updated values using the same WHERE clause
+   */
+  private async executeUpdateReturning(
+    connection: Connection,
+    obj: any
+  ): Promise<any> {
+    const { _ibmiUpdateReturning } = obj;
+    const { updateSql, selectColumns, whereClause, tableName } =
+      _ibmiUpdateReturning;
+
+    this.printDebug(
+      "Executing UPDATE with returning using transaction approach"
+    );
+
+    try {
+      // Execute the UPDATE statement
+      const updateObj = {
+        sql: updateSql,
+        bindings: obj.bindings,
+        sqlMethod: "update",
+      };
+
+      await this.executeStatementQuery(connection, updateObj);
+
+      // Build and execute SELECT to get the updated values
+      const selectSql = whereClause
+        ? `select ${selectColumns} from ${tableName} ${whereClause}`
+        : `select ${selectColumns} from ${tableName}`;
+
+      // Extract only WHERE clause bindings for SELECT
+      // UPDATE bindings format: [set_values..., where_values...]
+      // We need to figure out how many bindings are for SET vs WHERE
+      const updateSqlParts = updateSql.split(" where ");
+      const setClausePart = updateSqlParts[0];
+      const setBindingCount = (setClausePart.match(/\?/g) || []).length;
+      const whereBindings = obj.bindings
+        ? obj.bindings.slice(setBindingCount)
+        : [];
+
+      const selectObj = {
+        sql: selectSql,
+        bindings: whereBindings,
+        sqlMethod: "select",
+        response: undefined,
+      };
+
+      await this.executeSelectQuery(connection, selectObj);
+
+      // Return the SELECT results as the final response
+      obj.response = selectObj.response;
+      obj.sqlMethod = "update";
+      obj.select = true; // Mark as SELECT behavior to return rows instead of rowCount
+      return obj;
+    } catch (error: any) {
+      this.printError(`UPDATE with returning failed: ${error.message}`);
+      throw this.wrapError(error, "update_returning", obj);
+    }
+  }
+
+  private async executeSequentialInsert(
+    connection: Connection,
+    obj: any
+  ): Promise<any> {
+    const meta = obj._ibmiSequentialInsert;
+    const { rows, columns, tableName, returning, identityOnly } = meta;
+    this.printDebug("Executing sequential multi-row insert");
+    const insertedRows: any[] = [];
+
+    const transactional =
+      (this.config as any)?.ibmi?.sequentialInsertTransactional === true;
+    let beganTx = false;
+    if (transactional) {
+      try {
+        await connection.query("BEGIN");
+        beganTx = true;
+      } catch (e) {
+        this.printWarn(
+          "Could not begin transaction for sequential insert; proceeding without"
         );
       }
-      throw error;
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const colList = columns.join(", ");
+      const placeholders = columns.map(() => "?").join(", ");
+      const singleValues = columns.map((c: string) => row[c]);
+      const baseInsert = `insert into ${tableName} (${colList}) values (${placeholders})`;
+      const selectCols = returning
+        ? this.queryCompiler({} as any).formatter.columnize(returning)
+        : "IDENTITY_VAL_LOCAL()";
+      const wrapped = `select ${selectCols} from FINAL TABLE(${baseInsert})`;
+      const singleObj = {
+        sql: wrapped,
+        bindings: singleValues,
+        sqlMethod: "insert",
+        response: undefined,
+      };
+      await this.executeStatementQuery(connection, singleObj);
+      const resp = (singleObj as any).response?.rows;
+      if (resp) insertedRows.push(...resp);
+    }
+
+    if (transactional && beganTx) {
+      try {
+        await connection.query("COMMIT");
+      } catch (commitErr) {
+        this.printError(
+          "Commit failed for sequential insert, attempting rollback: " +
+            (commitErr as any)?.message
+        );
+        try {
+          await connection.query("ROLLBACK");
+        } catch {
+          /* ignore */
+        }
+        throw commitErr;
+      }
+    }
+
+    obj.response = { rows: insertedRows, rowCount: insertedRows.length };
+    obj.sqlMethod = "insert";
+    obj.select = true;
+    return obj;
+  }
+
+  private async executeDeleteReturning(
+    connection: Connection,
+    obj: any
+  ): Promise<any> {
+    const meta = obj._ibmiDeleteReturning;
+    const { deleteSql, selectColumns, whereClause, tableName } = meta;
+    this.printDebug("Executing DELETE with returning emulation");
+    try {
+      // SELECT rows first
+      const selectSql = whereClause
+        ? `select ${selectColumns} from ${tableName} ${whereClause}`
+        : `select ${selectColumns} from ${tableName}`;
+      const selectObj = {
+        sql: selectSql,
+        bindings: obj.bindings,
+        sqlMethod: "select",
+        response: undefined,
+      };
+      await this.executeSelectQuery(connection, selectObj);
+      const rowsToReturn = (selectObj as any).response?.rows || [];
+      // Execute DELETE
+      const deleteObj = {
+        sql: deleteSql,
+        bindings: obj.bindings,
+        sqlMethod: "del",
+        response: undefined,
+      };
+      await this.executeStatementQuery(connection, deleteObj);
+      obj.response = { rows: rowsToReturn, rowCount: rowsToReturn.length };
+      obj.sqlMethod = "del";
+      obj.select = true;
+      return obj;
+    } catch (error: any) {
+      this.printError(`DELETE with returning failed: ${error.message}`);
+      throw this.wrapError(error, "delete_returning", obj);
     }
   }
 
@@ -415,29 +584,47 @@ class DB2Client extends knex.Client {
   ) {
     if (!obj.sql) throw new Error("A query is required to stream results");
 
+    const optimizedFetchSize =
+      options?.fetchSize || this.calculateOptimalFetchSize(obj.sql);
+
     return new Promise((resolve, reject) => {
-      stream.on("error", reject);
-      stream.on("end", resolve);
+      let isResolved = false;
+
+      const cleanup = () => {
+        if (!isResolved) {
+          isResolved = true;
+        }
+      };
+
+      stream.on("error", (err: any) => {
+        cleanup();
+        reject(err);
+      });
+
+      stream.on("end", () => {
+        cleanup();
+        resolve(undefined);
+      });
 
       connection.query(
         obj.sql,
         obj.bindings,
         {
           cursor: true,
-          fetchSize: options?.fetchSize || 1,
+          fetchSize: optimizedFetchSize,
         },
         (error, cursor) => {
           if (error) {
             this.printError(this.safeStringify(error, 2));
-            stream.emit("error", error);
+            cleanup();
             reject(error);
             return;
           }
 
           const readableStream = this._createCursorStream(cursor);
           readableStream.on("error", (err) => {
+            cleanup();
             reject(err);
-            stream.emit("error", err);
           });
           readableStream.pipe(stream);
         }
@@ -445,19 +632,43 @@ class DB2Client extends knex.Client {
     });
   }
 
+  private calculateOptimalFetchSize(sql: string): number {
+    const sqlLower = sql.toLowerCase();
+    const hasJoins = /\s+join\s+/i.test(sql);
+    const hasAggregates = /\s+(count|sum|avg|max|min)\s*\(/i.test(sql);
+    const hasOrderBy = /\s+order\s+by\s+/i.test(sql);
+    const hasGroupBy = /\s+group\s+by\s+/i.test(sql);
+
+    // For complex analytical queries, use larger fetch sizes
+    if (hasJoins || hasAggregates || hasOrderBy || hasGroupBy) {
+      return 500;
+    }
+
+    // For simple queries, use moderate fetch size
+    return 100;
+  }
+
   private _createCursorStream(cursor: any): Readable {
     const parentThis = this;
+    let isClosed = false;
+
     return new Readable({
       objectMode: true,
       read() {
+        if (isClosed) return;
+
         cursor.fetch((error: unknown, result: unknown) => {
           if (error) {
             parentThis.printError(parentThis.safeStringify(error, 2));
+            isClosed = true;
+            this.emit("error", error);
+            return;
           }
 
           if (!cursor.noData) {
             this.push(result);
           } else {
+            isClosed = true;
             cursor.close((closeError: unknown) => {
               if (closeError) {
                 parentThis.printError(JSON.stringify(closeError, null, 2));
@@ -469,6 +680,22 @@ class DB2Client extends knex.Client {
             });
           }
         });
+      },
+      destroy(err, callback) {
+        if (!isClosed) {
+          isClosed = true;
+          cursor.close((closeError: unknown) => {
+            if (closeError) {
+              parentThis.printDebug(
+                "Error closing cursor during destroy: " +
+                  parentThis.safeStringify(closeError)
+              );
+            }
+            callback(err);
+          });
+        } else {
+          callback(err);
+        }
       },
     });
   }
@@ -517,15 +744,16 @@ class DB2Client extends knex.Client {
         return result;
       } catch (error: any) {
         // Enhanced error handling for custom output functions
+        const wrappedError = this.wrapError(error, "custom_output", obj);
         this.printError(
-          `Custom output function failed: ${error.message || error}`
+          `Custom output function failed: ${wrappedError.message}`
         );
         if (this.isConnectionError(error)) {
           throw new Error(
             "Connection closed during query processing - consider using migrations.disableTransactions: true for DDL operations"
           );
         }
-        throw error;
+        throw wrappedError;
       }
     }
 
@@ -553,6 +781,69 @@ class DB2Client extends knex.Client {
     return null;
   }
 
+  private wrapError(error: any, method: string, queryObject: any): Error {
+    const context = {
+      method,
+      sql: queryObject.sql
+        ? queryObject.sql.substring(0, 100) + "..."
+        : "unknown",
+      timestamp: new Date().toISOString(),
+    };
+
+    if (this.isConnectionError(error)) {
+      return new Error(
+        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+
+    if (this.isTimeoutError(error)) {
+      return new Error(
+        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+
+    if (this.isSQLError(error)) {
+      return new Error(
+        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+
+    // Generic error with context
+    return new Error(
+      `IBM i DB2 error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+    );
+  }
+
+  private shouldRetryQuery(queryObject: any, method: string): boolean {
+    return (
+      queryObject.sql?.toLowerCase().includes("systables") ||
+      queryObject.sql?.toLowerCase().includes("knex_migrations")
+    );
+  }
+
+  private async retryQuery(
+    connection: Connection,
+    queryObject: any,
+    method: string
+  ): Promise<any> {
+    this.printDebug(`Retrying ${method} query due to connection error...`);
+    try {
+      // Wait a moment and retry the query
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (this.isSelectMethod(method)) {
+        await this.executeSelectQuery(connection, queryObject);
+      } else {
+        await this.executeStatementQuery(connection, queryObject);
+      }
+      return queryObject;
+    } catch (retryError: any) {
+      this.printError(`Retry failed: ${retryError.message}`);
+      // If retry fails, return empty result to prevent migration corruption
+      queryObject.response = { rows: [], rowCount: 0 };
+      return queryObject;
+    }
+  }
+
   private isConnectionError(error: any): boolean {
     const errorMessage = (
       error.message ||
@@ -565,6 +856,31 @@ class DB2Client extends knex.Client {
         errorMessage.includes("invalid") ||
         errorMessage.includes("terminated") ||
         errorMessage.includes("not connected"))
+    );
+  }
+
+  private isTimeoutError(error: any): boolean {
+    const errorMessage = (
+      error.message ||
+      error.toString ||
+      error
+    ).toLowerCase();
+    return (
+      errorMessage.includes("timeout") || errorMessage.includes("timed out")
+    );
+  }
+
+  private isSQLError(error: any): boolean {
+    const errorMessage = (
+      error.message ||
+      error.toString ||
+      error
+    ).toLowerCase();
+    return (
+      errorMessage.includes("sql") ||
+      errorMessage.includes("syntax") ||
+      errorMessage.includes("table") ||
+      errorMessage.includes("column")
     );
   }
 
@@ -652,6 +968,10 @@ export interface DB2Config extends Knex.Config {
   client: any;
   connection: DB2ConnectionConfig;
   pool?: DB2PoolConfig;
+  ibmi?: {
+    multiRowInsert?: "auto" | "sequential" | "disabled";
+    sequentialInsertTransactional?: boolean;
+  };
 }
 
 export const DB2Dialect = DB2Client;

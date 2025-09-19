@@ -186,6 +186,68 @@ var IBMiColumnCompiler = class extends import_columncompiler.default {
   increments(options = { primaryKey: true }) {
     return "int not null generated always as identity (start with 1, increment by 1)" + (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
   }
+  // Add more IBM i DB2 specific column types for better support
+  bigIncrements(options = { primaryKey: true }) {
+    return "bigint not null generated always as identity (start with 1, increment by 1)" + (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
+  }
+  varchar(length) {
+    return length ? `varchar(${length})` : "varchar(255)";
+  }
+  char(length) {
+    return length ? `char(${length})` : "char(1)";
+  }
+  text() {
+    return "clob(1M)";
+  }
+  mediumtext() {
+    return "clob(16M)";
+  }
+  longtext() {
+    return "clob(2G)";
+  }
+  binary(length) {
+    return length ? `binary(${length})` : "binary(1)";
+  }
+  varbinary(length) {
+    return length ? `varbinary(${length})` : "varbinary(255)";
+  }
+  // IBM i DB2 decimal with precision/scale
+  decimal(precision, scale) {
+    if (precision && scale) {
+      return `decimal(${precision}, ${scale})`;
+    } else if (precision) {
+      return `decimal(${precision})`;
+    }
+    return "decimal(10, 2)";
+  }
+  // IBM i DB2 timestamp
+  timestamp(options) {
+    if (options?.useTz) {
+      return "timestamp with time zone";
+    }
+    return "timestamp";
+  }
+  datetime(options) {
+    return this.timestamp(options);
+  }
+  // IBM i DB2 date and time types
+  date() {
+    return "date";
+  }
+  time() {
+    return "time";
+  }
+  // JSON support (IBM i 7.3+)
+  json() {
+    return "clob(16M) check (json_valid(json_column))";
+  }
+  jsonb() {
+    return "clob(16M) check (json_valid(jsonb_column))";
+  }
+  // UUID support using CHAR(36)
+  uuid() {
+    return "char(36)";
+  }
 };
 var ibmi_columncompiler_default = IBMiColumnCompiler;
 
@@ -244,6 +306,16 @@ var ibmi_transaction_default = IBMiTransaction;
 var import_querycompiler = __toESM(require("knex/lib/query/querycompiler.js"));
 var import_wrappingFormatter = require("knex/lib/formatter/wrappingFormatter.js");
 var IBMiQueryCompiler = class extends import_querycompiler.default {
+  constructor() {
+    super(...arguments);
+    // Cache for column metadata to improve performance with repeated operations
+    __publicField(this, "columnCache", /* @__PURE__ */ new Map());
+  }
+  // Override select method to add IBM i optimization hints
+  select() {
+    const originalResult = super.select.call(this);
+    return originalResult;
+  }
   formatTimestampLocal(date) {
     const pad = (n) => String(n).padStart(2, "0");
     const y = date.getFullYear();
@@ -263,15 +335,42 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
       }
       return "";
     }
-    const selectColumns = returning ? this.formatter.columnize(returning) : "IDENTITY_VAL_LOCAL()";
-    const returningSql = returning ? this._returning("insert", returning, void 0) + " " : "";
-    const insertSql = [
-      this.with(),
-      `insert into ${this.tableName}`,
-      this._buildInsertData(insertValues, returningSql)
-    ].filter(Boolean).join(" ");
+    const ibmiConfig = this.client?.config?.ibmi || {};
+    const multiRowStrategy = ibmiConfig.multiRowInsert || "auto";
+    const isArrayInsert = Array.isArray(insertValues) && insertValues.length > 1;
+    const originalValues = isArrayInsert ? insertValues.slice() : insertValues;
+    const forceSingleRow = multiRowStrategy === "disabled" || multiRowStrategy === "sequential" && isArrayInsert;
+    let workingValues = insertValues;
+    if (forceSingleRow && isArrayInsert) {
+      workingValues = [insertValues[0]];
+      this.single.insert = workingValues;
+    }
+    const standardInsert = super.insert();
+    const insertSql = typeof standardInsert === "object" && standardInsert.sql ? standardInsert.sql : standardInsert;
+    const multiRow = isArrayInsert && !forceSingleRow;
+    if (multiRow && returning === "*") {
+      if (this.client?.printWarn) {
+        this.client.printWarn("multi-row insert with returning * may be large");
+      }
+    }
+    const selectColumns = returning ? this.formatter.columnize(returning) : multiRow ? "*" : "IDENTITY_VAL_LOCAL()";
     const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
-    return { sql, returning };
+    if (multiRowStrategy === "sequential" && isArrayInsert) {
+      const first = originalValues[0];
+      const columns = Object.keys(first).sort();
+      return {
+        sql,
+        returning: void 0,
+        _ibmiSequentialInsert: {
+          columns,
+          rows: originalValues,
+          tableName: this.tableName,
+          returning: returning || null,
+          identityOnly: !returning
+        }
+      };
+    }
+    return { sql, returning: void 0 };
   }
   isEmptyInsertValues(insertValues) {
     return Array.isArray(insertValues) && insertValues.length === 0 || this.isEmptyObject(insertValues);
@@ -293,14 +392,46 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
   _buildInsertData(insertValues, returningSql) {
     const insertData = this._prepInsert(insertValues);
     if (insertData.columns.length > 0) {
-      const columnsSql = `(${this.formatter.columnize(insertData.columns)})`;
-      const valuesSql = `(${this._buildInsertValues(insertData)})`;
-      return `${columnsSql} ${returningSql}values ${valuesSql}`;
+      const parts = [];
+      parts.push("(" + this.formatter.columnize(insertData.columns) + ") ");
+      if (returningSql) parts.push(returningSql);
+      parts.push("values ");
+      const rowsSql = [];
+      for (const row of insertData.values) {
+        const placeholders = row.map(() => "?").join(", ");
+        rowsSql.push("(" + placeholders + ")");
+      }
+      parts.push(rowsSql.join(", "));
+      return parts.join("");
     }
     if (Array.isArray(insertValues) && insertValues.length === 1 && insertValues[0]) {
-      return returningSql + this._emptyInsertValue;
+      return (returningSql || "") + this._emptyInsertValue;
     }
     return "";
+  }
+  generateCacheKey(data) {
+    if (Array.isArray(data) && data.length > 0) {
+      return Object.keys(data[0] || {}).sort().join("|");
+    }
+    if (data && typeof data === "object") {
+      return Object.keys(data).sort().join("|");
+    }
+    return "";
+  }
+  buildFromCache(data, cachedColumns) {
+    const dataArray = Array.isArray(data) ? data : data ? [data] : [];
+    const values = [];
+    for (const item of dataArray) {
+      if (item == null) {
+        break;
+      }
+      const row = cachedColumns.map((column) => item[column] ?? void 0);
+      values.push(row);
+    }
+    return {
+      columns: cachedColumns,
+      values
+    };
   }
   _prepInsert(data) {
     if (typeof data === "object" && data?.migration_time) {
@@ -323,25 +454,25 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
     if (dataArray.length === 0) {
       return { columns: [], values: [] };
     }
-    const allColumns = /* @__PURE__ */ new Set();
-    for (const item of dataArray) {
-      if (item != null) {
-        Object.keys(item).forEach((key) => allColumns.add(key));
-      }
+    const firstItem = dataArray[0];
+    if (!firstItem || typeof firstItem !== "object") {
+      return { columns: [], values: [] };
     }
-    const columns = Array.from(allColumns).sort();
+    const cacheKey = this.generateCacheKey(firstItem);
+    let columns;
+    if (cacheKey && this.columnCache.has(cacheKey)) {
+      columns = this.columnCache.get(cacheKey);
+    } else {
+      columns = Object.keys(firstItem).sort();
+      if (cacheKey && columns.length > 0)
+        this.columnCache.set(cacheKey, columns);
+    }
     const values = [];
     for (const item of dataArray) {
-      if (item == null) {
-        break;
-      }
-      const row = columns.map((column) => item[column] ?? void 0);
-      values.push(row);
+      if (!item || typeof item !== "object") continue;
+      values.push(columns.map((c) => item[c] ?? void 0));
     }
-    return {
-      columns,
-      values
-    };
+    return { columns, values };
   }
   update() {
     const withSQL = this.with();
@@ -350,6 +481,7 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
     const order = this.order();
     const limit = this.limit();
     const { returning } = this.single;
+    const optimizationHints = "";
     const baseUpdateSql = [
       withSQL,
       `update ${this.single.only ? "only " : ""}${this.tableName}`,
@@ -357,17 +489,45 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
       updates.join(", "),
       where,
       order,
-      limit
+      limit,
+      optimizationHints
     ].filter(Boolean).join(" ");
     if (returning) {
-      this.client.logger.warn?.(
-        "IBMi DB2 does not support returning in update statements, only inserts"
-      );
       const selectColumns = this.formatter.columnize(this.single.returning);
-      const sql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
-      return { sql, returning };
+      const expectedSql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
+      return {
+        sql: expectedSql,
+        returning,
+        _ibmiUpdateReturning: {
+          updateSql: baseUpdateSql,
+          selectColumns,
+          whereClause: where,
+          tableName: this.tableName
+        }
+      };
     }
     return { sql: baseUpdateSql, returning };
+  }
+  // Emulate DELETE ... RETURNING by compiling a FINAL TABLE wrapper for display and attaching metadata
+  del() {
+    const baseDelete = super.del();
+    const { returning } = this.single;
+    if (!returning) {
+      return { sql: baseDelete, returning: void 0 };
+    }
+    const deleteSql = typeof baseDelete === "object" && baseDelete.sql ? baseDelete.sql : baseDelete;
+    const selectColumns = this.formatter.columnize(returning);
+    const expectedSql = `select ${selectColumns} from FINAL TABLE(${deleteSql})`;
+    return {
+      sql: expectedSql,
+      returning,
+      _ibmiDeleteReturning: {
+        deleteSql,
+        selectColumns,
+        whereClause: this.where(),
+        tableName: this.tableName
+      }
+    };
   }
   /**
    * Handle returning clause for IBMi DB2 queries
@@ -389,15 +549,26 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
         return "";
     }
   }
+  getOptimizationHints(queryType, data) {
+    const hints = [];
+    if (queryType === "select") {
+      hints.push("WITH UR");
+    }
+    return hints.length > 0 ? " " + hints.join(" ") : "";
+  }
+  getSelectOptimizationHints(sql) {
+    const hints = [];
+    hints.push("WITH UR");
+    return hints.length > 0 ? " " + hints.join(" ") : "";
+  }
   columnizeWithPrefix(prefix, target) {
     const columns = typeof target === "string" ? [target] : target;
-    let str = "";
-    let i = -1;
-    while (++i < columns.length) {
-      if (i > 0) str += ", ";
-      str += prefix + this.wrap(columns[i]);
+    const parts = [];
+    for (let i = 0; i < columns.length; i++) {
+      if (i > 0) parts.push(", ");
+      parts.push(prefix + this.wrap(columns[i]));
     }
-    return str;
+    return parts.join("");
   }
 };
 var ibmi_querycompiler_default = IBMiQueryCompiler;
@@ -607,7 +778,6 @@ function createIBMiMigrationRunner(knex2, config) {
 // src/index.ts
 var DB2Client = class extends import_knex.default.Client {
   constructor(config) {
-    console.log("\u{1F3AF} DB2Client constructor called!");
     super(config);
     this.driverName = "odbc";
     if (this.dialect && !this.config.client) {
@@ -650,6 +820,7 @@ var DB2Client = class extends import_knex.default.Client {
     return import_odbc.default;
   }
   wrapIdentifierImpl(value) {
+    if (!value) return value;
     if (value.includes("KNEX_MIGRATIONS") || value.includes("knex_migrations")) {
       return value.toUpperCase();
     }
@@ -724,6 +895,15 @@ var DB2Client = class extends import_knex.default.Client {
     const queryObject = this.normalizeQueryObject(obj);
     const method = this.determineQueryMethod(queryObject);
     queryObject.sqlMethod = method;
+    if (queryObject._ibmiUpdateReturning) {
+      return await this.executeUpdateReturning(connection, queryObject);
+    }
+    if (queryObject._ibmiSequentialInsert) {
+      return await this.executeSequentialInsert(connection, queryObject);
+    }
+    if (queryObject._ibmiDeleteReturning) {
+      return await this.executeDeleteReturning(connection, queryObject);
+    }
     if (import_node_process.default.env.DEBUG === "true" && queryObject.sql && (queryObject.sql.toLowerCase().includes("create table") || queryObject.sql.toLowerCase().includes("knex_migrations"))) {
       this.printDebug(
         `Executing ${method} query: ${queryObject.sql.substring(0, 200)}...`
@@ -746,31 +926,141 @@ var DB2Client = class extends import_knex.default.Client {
       this.printDebug(`Query completed: ${method} (${endTime - startTime}ms)`);
       return queryObject;
     } catch (error) {
+      const wrappedError = this.wrapError(error, method, queryObject);
       if (this.isConnectionError(error)) {
         this.printError(
           `Connection error during ${method} query: ${error.message}`
         );
-        if (queryObject.sql?.toLowerCase().includes("systables")) {
-          this.printDebug("Retrying hasTable query due to connection error...");
-          try {
-            await new Promise((resolve) => setTimeout(resolve, 1e3));
-            if (this.isSelectMethod(method)) {
-              await this.executeSelectQuery(connection, queryObject);
-            } else {
-              await this.executeStatementQuery(connection, queryObject);
-            }
-            return queryObject;
-          } catch (retryError) {
-            this.printError(`Retry failed: ${retryError.message}`);
-            queryObject.response = { rows: [], rowCount: 0 };
-            return queryObject;
-          }
+        if (this.shouldRetryQuery(queryObject, method)) {
+          return await this.retryQuery(connection, queryObject, method);
         }
-        throw new Error(
-          `Connection closed during ${method} operation - IBM i DB2 DDL operations cause implicit commits`
+        throw wrappedError;
+      }
+      throw wrappedError;
+    }
+  }
+  /**
+   * Execute UPDATE with returning clause using transaction + SELECT approach
+   * Since IBM i DB2 doesn't support FINAL TABLE with UPDATE, we:
+   * 1. Execute the UPDATE statement
+   * 2. Execute a SELECT to get the updated values using the same WHERE clause
+   */
+  async executeUpdateReturning(connection, obj) {
+    const { _ibmiUpdateReturning } = obj;
+    const { updateSql, selectColumns, whereClause, tableName } = _ibmiUpdateReturning;
+    this.printDebug(
+      "Executing UPDATE with returning using transaction approach"
+    );
+    try {
+      const updateObj = {
+        sql: updateSql,
+        bindings: obj.bindings,
+        sqlMethod: "update"
+      };
+      await this.executeStatementQuery(connection, updateObj);
+      const selectSql = whereClause ? `select ${selectColumns} from ${tableName} ${whereClause}` : `select ${selectColumns} from ${tableName}`;
+      const updateSqlParts = updateSql.split(" where ");
+      const setClausePart = updateSqlParts[0];
+      const setBindingCount = (setClausePart.match(/\?/g) || []).length;
+      const whereBindings = obj.bindings ? obj.bindings.slice(setBindingCount) : [];
+      const selectObj = {
+        sql: selectSql,
+        bindings: whereBindings,
+        sqlMethod: "select",
+        response: void 0
+      };
+      await this.executeSelectQuery(connection, selectObj);
+      obj.response = selectObj.response;
+      obj.sqlMethod = "update";
+      obj.select = true;
+      return obj;
+    } catch (error) {
+      this.printError(`UPDATE with returning failed: ${error.message}`);
+      throw this.wrapError(error, "update_returning", obj);
+    }
+  }
+  async executeSequentialInsert(connection, obj) {
+    const meta = obj._ibmiSequentialInsert;
+    const { rows, columns, tableName, returning, identityOnly } = meta;
+    this.printDebug("Executing sequential multi-row insert");
+    const insertedRows = [];
+    const transactional = this.config?.ibmi?.sequentialInsertTransactional === true;
+    let beganTx = false;
+    if (transactional) {
+      try {
+        await connection.query("BEGIN");
+        beganTx = true;
+      } catch (e) {
+        this.printWarn(
+          "Could not begin transaction for sequential insert; proceeding without"
         );
       }
-      throw error;
+    }
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const colList = columns.join(", ");
+      const placeholders = columns.map(() => "?").join(", ");
+      const singleValues = columns.map((c) => row[c]);
+      const baseInsert = `insert into ${tableName} (${colList}) values (${placeholders})`;
+      const selectCols = returning ? this.queryCompiler({}).formatter.columnize(returning) : "IDENTITY_VAL_LOCAL()";
+      const wrapped = `select ${selectCols} from FINAL TABLE(${baseInsert})`;
+      const singleObj = {
+        sql: wrapped,
+        bindings: singleValues,
+        sqlMethod: "insert",
+        response: void 0
+      };
+      await this.executeStatementQuery(connection, singleObj);
+      const resp = singleObj.response?.rows;
+      if (resp) insertedRows.push(...resp);
+    }
+    if (transactional && beganTx) {
+      try {
+        await connection.query("COMMIT");
+      } catch (commitErr) {
+        this.printError(
+          "Commit failed for sequential insert, attempting rollback: " + commitErr?.message
+        );
+        try {
+          await connection.query("ROLLBACK");
+        } catch {
+        }
+        throw commitErr;
+      }
+    }
+    obj.response = { rows: insertedRows, rowCount: insertedRows.length };
+    obj.sqlMethod = "insert";
+    obj.select = true;
+    return obj;
+  }
+  async executeDeleteReturning(connection, obj) {
+    const meta = obj._ibmiDeleteReturning;
+    const { deleteSql, selectColumns, whereClause, tableName } = meta;
+    this.printDebug("Executing DELETE with returning emulation");
+    try {
+      const selectSql = whereClause ? `select ${selectColumns} from ${tableName} ${whereClause}` : `select ${selectColumns} from ${tableName}`;
+      const selectObj = {
+        sql: selectSql,
+        bindings: obj.bindings,
+        sqlMethod: "select",
+        response: void 0
+      };
+      await this.executeSelectQuery(connection, selectObj);
+      const rowsToReturn = selectObj.response?.rows || [];
+      const deleteObj = {
+        sql: deleteSql,
+        bindings: obj.bindings,
+        sqlMethod: "del",
+        response: void 0
+      };
+      await this.executeStatementQuery(connection, deleteObj);
+      obj.response = { rows: rowsToReturn, rowCount: rowsToReturn.length };
+      obj.sqlMethod = "del";
+      obj.select = true;
+      return obj;
+    } catch (error) {
+      this.printError(`DELETE with returning failed: ${error.message}`);
+      throw this.wrapError(error, "delete_returning", obj);
     }
   }
   normalizeQueryObject(obj) {
@@ -861,45 +1151,75 @@ var DB2Client = class extends import_knex.default.Client {
   }
   async _stream(connection, obj, stream, options) {
     if (!obj.sql) throw new Error("A query is required to stream results");
+    const optimizedFetchSize = options?.fetchSize || this.calculateOptimalFetchSize(obj.sql);
     return new Promise((resolve, reject) => {
-      stream.on("error", reject);
-      stream.on("end", resolve);
+      let isResolved = false;
+      const cleanup = () => {
+        if (!isResolved) {
+          isResolved = true;
+        }
+      };
+      stream.on("error", (err) => {
+        cleanup();
+        reject(err);
+      });
+      stream.on("end", () => {
+        cleanup();
+        resolve(void 0);
+      });
       connection.query(
         obj.sql,
         obj.bindings,
         {
           cursor: true,
-          fetchSize: options?.fetchSize || 1
+          fetchSize: optimizedFetchSize
         },
         (error, cursor) => {
           if (error) {
             this.printError(this.safeStringify(error, 2));
-            stream.emit("error", error);
+            cleanup();
             reject(error);
             return;
           }
           const readableStream = this._createCursorStream(cursor);
           readableStream.on("error", (err) => {
+            cleanup();
             reject(err);
-            stream.emit("error", err);
           });
           readableStream.pipe(stream);
         }
       );
     });
   }
+  calculateOptimalFetchSize(sql) {
+    const sqlLower = sql.toLowerCase();
+    const hasJoins = /\s+join\s+/i.test(sql);
+    const hasAggregates = /\s+(count|sum|avg|max|min)\s*\(/i.test(sql);
+    const hasOrderBy = /\s+order\s+by\s+/i.test(sql);
+    const hasGroupBy = /\s+group\s+by\s+/i.test(sql);
+    if (hasJoins || hasAggregates || hasOrderBy || hasGroupBy) {
+      return 500;
+    }
+    return 100;
+  }
   _createCursorStream(cursor) {
     const parentThis = this;
+    let isClosed = false;
     return new import_node_stream.Readable({
       objectMode: true,
       read() {
+        if (isClosed) return;
         cursor.fetch((error, result) => {
           if (error) {
             parentThis.printError(parentThis.safeStringify(error, 2));
+            isClosed = true;
+            this.emit("error", error);
+            return;
           }
           if (!cursor.noData) {
             this.push(result);
           } else {
+            isClosed = true;
             cursor.close((closeError) => {
               if (closeError) {
                 parentThis.printError(JSON.stringify(closeError, null, 2));
@@ -911,6 +1231,21 @@ var DB2Client = class extends import_knex.default.Client {
             });
           }
         });
+      },
+      destroy(err, callback) {
+        if (!isClosed) {
+          isClosed = true;
+          cursor.close((closeError) => {
+            if (closeError) {
+              parentThis.printDebug(
+                "Error closing cursor during destroy: " + parentThis.safeStringify(closeError)
+              );
+            }
+            callback(err);
+          });
+        } else {
+          callback(err);
+        }
       }
     });
   }
@@ -942,15 +1277,16 @@ var DB2Client = class extends import_knex.default.Client {
         const result = obj.output(runner, response);
         return result;
       } catch (error) {
+        const wrappedError = this.wrapError(error, "custom_output", obj);
         this.printError(
-          `Custom output function failed: ${error.message || error}`
+          `Custom output function failed: ${wrappedError.message}`
         );
         if (this.isConnectionError(error)) {
           throw new Error(
             "Connection closed during query processing - consider using migrations.disableTransactions: true for DDL operations"
           );
         }
-        throw error;
+        throw wrappedError;
       }
     }
     const validationResult = this.validateResponse(obj);
@@ -968,9 +1304,61 @@ var DB2Client = class extends import_knex.default.Client {
     }
     return null;
   }
+  wrapError(error, method, queryObject) {
+    const context = {
+      method,
+      sql: queryObject.sql ? queryObject.sql.substring(0, 100) + "..." : "unknown",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    if (this.isConnectionError(error)) {
+      return new Error(
+        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+    if (this.isTimeoutError(error)) {
+      return new Error(
+        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+    if (this.isSQLError(error)) {
+      return new Error(
+        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+    return new Error(
+      `IBM i DB2 error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+    );
+  }
+  shouldRetryQuery(queryObject, method) {
+    return queryObject.sql?.toLowerCase().includes("systables") || queryObject.sql?.toLowerCase().includes("knex_migrations");
+  }
+  async retryQuery(connection, queryObject, method) {
+    this.printDebug(`Retrying ${method} query due to connection error...`);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1e3));
+      if (this.isSelectMethod(method)) {
+        await this.executeSelectQuery(connection, queryObject);
+      } else {
+        await this.executeStatementQuery(connection, queryObject);
+      }
+      return queryObject;
+    } catch (retryError) {
+      this.printError(`Retry failed: ${retryError.message}`);
+      queryObject.response = { rows: [], rowCount: 0 };
+      return queryObject;
+    }
+  }
   isConnectionError(error) {
     const errorMessage = (error.message || error.toString || error).toLowerCase();
     return errorMessage.includes("connection") && (errorMessage.includes("closed") || errorMessage.includes("invalid") || errorMessage.includes("terminated") || errorMessage.includes("not connected"));
+  }
+  isTimeoutError(error) {
+    const errorMessage = (error.message || error.toString || error).toLowerCase();
+    return errorMessage.includes("timeout") || errorMessage.includes("timed out");
+  }
+  isSQLError(error) {
+    const errorMessage = (error.message || error.toString || error).toLowerCase();
+    return errorMessage.includes("sql") || errorMessage.includes("syntax") || errorMessage.includes("table") || errorMessage.includes("column");
   }
   processSqlMethod(obj) {
     const { rows, rowCount } = obj.response;

@@ -14,6 +14,8 @@ For IBM i OSS docs, see https://ibmi-oss-docs.readthedocs.io/. ODBC guidance: ht
 - Query execution
 - Transactions
 - Streaming
+- Multi-row insert strategies (auto | sequential | disabled)
+- Emulated returning for UPDATE and DELETE
 
 ## Requirements
 
@@ -167,49 +169,36 @@ try {
 
 ### Streaming
 
+There are two primary ways to consume a result stream: (1) classic Node stream piping with transform stages, and (2) async iteration with `for await` (which can be easier to reason about). Use a `fetchSize` to control how many rows are fetched from the driver per batch.
+
 ```ts
 import { knex } from "knex";
 import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 import { Transform } from "node:stream";
 import { finished } from "node:stream/promises";
 
-const config: DB2Config = {
-  client: DB2Dialect,
-  connection: {
-    host: "your-ibm-i-host",
-    database: "*LOCAL",
-    user: "your-username",
-    password: "your-password",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { 
-      ALLOWPROCCALLS: 1, 
-      CMT: 0, 
-      DBQ: "MYLIB" 
-    },
-  },
-  pool: { min: 2, max: 10 },
-};
-
+const config: DB2Config = { /* ...same as earlier examples... */ };
 const db = knex(config);
 
 try {
-  const stream = await db.select("*").from("LARGETABLE").stream({ fetchSize: 100 });
+  const stream = await db("LARGETABLE").select("*").stream({ fetchSize: 100 });
 
+  // Approach 1: Pipe through a Transform stream
   const transform = new Transform({
     objectMode: true,
-    transform(chunk, _enc, cb) {
-      // Process each row
-      console.log("Processing row:", chunk);
-      cb(null, chunk);
+    transform(row, _enc, cb) {
+      // Process each row (side effects, enrichment, filtering, etc.)
+      console.log("Transforming row id=", row.ID);
+      cb(null, row);
     },
   });
-
   stream.pipe(transform);
-  await finished(stream);
+  await finished(stream); // Wait until piping completes
 
-  // Alternative: async iteration
-  for await (const record of stream) {
-    console.log(record);
+  // Approach 2: Async iteration (recommended for simplicity)
+  const iterStream = await db("LARGETABLE").select("*").stream({ fetchSize: 200 });
+  for await (const row of iterStream) {
+    console.log("Iter row id=", row.ID);
   }
 } catch (error) {
   console.error("Streaming error:", error);
@@ -332,11 +321,6 @@ ibmi-migrations migrate:currentVersion # Show current migration version
 ibmi-migrations migrate:list           # List all migrations
 ibmi-migrations migrate:make <name>    # Create new migration file
 
-# Legacy aliases (backward compatibility):
-ibmi-migrations latest                 # Same as migrate:latest
-ibmi-migrations rollback               # Same as migrate:rollback
-ibmi-migrations status                 # Same as migrate:status
-
 # Options:
 ibmi-migrations migrate:status --env production
 ibmi-migrations migrate:latest --knexfile ./config/knexfile.js
@@ -364,6 +348,63 @@ const config = {
 ```
 
 **Warning**: Standard Knex migrations may still hang on lock operations. The built-in IBM i migration system is strongly recommended.
+
+## Multi-Row Insert Strategies
+
+Configure via `ibmi.multiRowInsert` in the knex config:
+
+```ts
+const db = knex({
+  client: DB2Dialect,
+  connection: { /* ... */ },
+  ibmi: { multiRowInsert: 'auto' } // 'auto' | 'sequential' | 'disabled'
+});
+```
+
+- `auto` (default): Generates a single INSERT with multiple VALUES lists. For `.returning('*')` or no explicit column list it returns all inserted rows (lenient fallback). Identity values are whatever DB2 ODBC surfaces for that multi-row statement.
+- `sequential`: Compiler shows a single-row statement (first row) but at execution time each row is inserted individually inside a loop to reliably collect identity values (using `IDENTITY_VAL_LOCAL()` per row). Suitable when you need each generated identity.
+- `disabled`: Falls back to legacy behavior: only the first row is inserted (others ignored). Useful for strict backward compatibility.
+
+If you specify `.returning(['COL1', 'COL2'])` with multi-row inserts, those columns are selected; otherwise `IDENTITY_VAL_LOCAL()` (single-row) or `*` (multi-row) is used as a lenient fallback.
+
+## Returning Behavior (INSERT / UPDATE / DELETE)
+
+Native `RETURNING` is not broadly supported over ODBC on IBM i. The dialect provides pragmatic emulation:
+
+### INSERT
+- `auto` multi-row: generates a single multi-values INSERT. When no explicit column list is requested it returns all inserted rows (`*`) as a lenient fallback. Some installations may see this internally wrapped using a `SELECT * FROM FINAL TABLE( INSERT ... )` pattern in logs or debug output; that wrapper is only an implementation detail to surface inserted rows.
+- `sequential`: inserts each row one at a time so it can reliably call `IDENTITY_VAL_LOCAL()` after each insert; builds an array of returned rows.
+- `disabled`: legacy single-row insert behavior; additional rows in the values array are ignored.
+
+### UPDATE
+- Executes the UPDATE.
+- Re-selects the affected rows using the original WHERE clause when `.returning(...)` is requested.
+
+### DELETE
+- Selects the rows to be deleted (capturing requested returning columns or `*`).
+- Executes the DELETE.
+- Returns the previously selected rows.
+
+### Notes
+- `returning('*')` can be expensive on large result sets—limit the column list when possible.
+- For guaranteed, ordered identity values across many inserted rows use the `sequential` strategy.
+
+## Configuration Summary
+
+```ts
+interface IbmiDialectConfig {
+  multiRowInsert?: 'auto' | 'sequential' | 'disabled';
+  sequentialInsertTransactional?: boolean; // if true, wraps sequential loop in BEGIN/COMMIT
+}
+```
+
+Attach under the root knex config as `ibmi`.
+
+### Transactional Sequential Inserts
+
+When `ibmi.sequentialInsertTransactional` is `true`, the dialect will attempt `BEGIN` before the per-row loop and `COMMIT` after. On commit failure it will attempt a `ROLLBACK`. If `BEGIN` is not supported, it logs a warning and continues non-transactionally.
+
+<!-- Benchmarks section intentionally removed. Benchmarking is handled in the external test harness project -->
 
 ## Links
 
