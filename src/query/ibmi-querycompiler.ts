@@ -11,12 +11,6 @@ class IBMiQueryCompiler extends QueryCompiler {
   // Override select method to add IBM i optimization hints
   select() {
     const originalResult = super.select.call(this);
-
-    if (typeof originalResult === 'string') {
-      const optimizationHints = this.getSelectOptimizationHints(originalResult);
-      return originalResult + optimizationHints;
-    }
-
     return originalResult;
   }
 
@@ -42,15 +36,17 @@ class IBMiQueryCompiler extends QueryCompiler {
       return "";
     }
 
-    // For IBM i ODBC compatibility, use standard insert without FINAL TABLE
-    // FINAL TABLE syntax causes issues with prepared statements in IBM i ODBC
-    if (returning) {
-      // IBM i doesn't support RETURNING clause in INSERT well via ODBC
-      this.client.logger.warn?.("IBM i DB2 RETURNING clause in INSERT may not work via ODBC");
-    }
+    // Get the standard INSERT statement from parent class
+    const standardInsert = super.insert();
 
-    // Use the parent class logic for standard INSERT
-    return super.insert();
+    // If it's an object with sql property, use that; otherwise use the string directly
+    const insertSql = typeof standardInsert === 'object' && standardInsert.sql ? standardInsert.sql : standardInsert;
+
+    // For IBM i, wrap INSERT with FINAL TABLE and return IDENTITY_VAL_LOCAL()
+    const selectColumns = "IDENTITY_VAL_LOCAL()";
+    const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
+
+    return { sql, returning: undefined };
   }
 
   private isEmptyInsertValues(insertValues: any): boolean {
@@ -234,7 +230,7 @@ class IBMiQueryCompiler extends QueryCompiler {
     const { returning } = this.single;
 
     // Add IBM i v7r3+ optimization hints for UPDATE
-    const optimizationHints = this.getOptimizationHints('update');
+    const optimizationHints = '';
 
     // Build the base update statement
     const baseUpdateSql = [
