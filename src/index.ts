@@ -288,7 +288,8 @@ class DB2Client extends knex.Client {
       const selectObj = {
         sql: selectSql,
         bindings: obj.bindings,
-        sqlMethod: 'select'
+        sqlMethod: 'select',
+        response: undefined
       };
 
       await this.executeSelectQuery(connection, selectObj);
