@@ -152,6 +152,68 @@ var IBMiColumnCompiler = class extends ColumnCompiler {
   increments(options = { primaryKey: true }) {
     return "int not null generated always as identity (start with 1, increment by 1)" + (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
   }
+  // Add more IBM i DB2 specific column types for better support
+  bigIncrements(options = { primaryKey: true }) {
+    return "bigint not null generated always as identity (start with 1, increment by 1)" + (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
+  }
+  varchar(length) {
+    return length ? `varchar(${length})` : "varchar(255)";
+  }
+  char(length) {
+    return length ? `char(${length})` : "char(1)";
+  }
+  text() {
+    return "clob(1M)";
+  }
+  mediumtext() {
+    return "clob(16M)";
+  }
+  longtext() {
+    return "clob(2G)";
+  }
+  binary(length) {
+    return length ? `binary(${length})` : "binary(1)";
+  }
+  varbinary(length) {
+    return length ? `varbinary(${length})` : "varbinary(255)";
+  }
+  // IBM i DB2 decimal with precision/scale
+  decimal(precision, scale) {
+    if (precision && scale) {
+      return `decimal(${precision}, ${scale})`;
+    } else if (precision) {
+      return `decimal(${precision})`;
+    }
+    return "decimal(10, 2)";
+  }
+  // IBM i DB2 timestamp
+  timestamp(options) {
+    if (options?.useTz) {
+      return "timestamp with time zone";
+    }
+    return "timestamp";
+  }
+  datetime(options) {
+    return this.timestamp(options);
+  }
+  // IBM i DB2 date and time types
+  date() {
+    return "date";
+  }
+  time() {
+    return "time";
+  }
+  // JSON support (IBM i 7.3+)
+  json() {
+    return "clob(16M) check (json_valid(json_column))";
+  }
+  jsonb() {
+    return "clob(16M) check (json_valid(jsonb_column))";
+  }
+  // UUID support using CHAR(36)
+  uuid() {
+    return "char(36)";
+  }
 };
 var ibmi_columncompiler_default = IBMiColumnCompiler;
 
@@ -210,6 +272,20 @@ var ibmi_transaction_default = IBMiTransaction;
 import QueryCompiler from "knex/lib/query/querycompiler.js";
 import { rawOrFn as rawOrFn_ } from "knex/lib/formatter/wrappingFormatter.js";
 var IBMiQueryCompiler = class extends QueryCompiler {
+  constructor() {
+    super(...arguments);
+    // Cache for column metadata to improve performance with repeated operations
+    __publicField(this, "columnCache", /* @__PURE__ */ new Map());
+  }
+  // Override select method to add IBM i optimization hints
+  select() {
+    const originalResult = super.select.call(this);
+    if (typeof originalResult === "string") {
+      const optimizationHints = this.getSelectOptimizationHints(originalResult);
+      return originalResult + optimizationHints;
+    }
+    return originalResult;
+  }
   formatTimestampLocal(date) {
     const pad = (n) => String(n).padStart(2, "0");
     const y = date.getFullYear();
@@ -229,15 +305,10 @@ var IBMiQueryCompiler = class extends QueryCompiler {
       }
       return "";
     }
-    const selectColumns = returning ? this.formatter.columnize(returning) : "IDENTITY_VAL_LOCAL()";
-    const returningSql = returning ? this._returning("insert", returning, void 0) + " " : "";
-    const insertSql = [
-      this.with(),
-      `insert into ${this.tableName}`,
-      this._buildInsertData(insertValues, returningSql)
-    ].filter(Boolean).join(" ");
-    const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
-    return { sql, returning };
+    if (returning) {
+      this.client.logger.warn?.("IBM i DB2 RETURNING clause in INSERT may not work via ODBC");
+    }
+    return super.insert();
   }
   isEmptyInsertValues(insertValues) {
     return Array.isArray(insertValues) && insertValues.length === 0 || this.isEmptyObject(insertValues);
@@ -259,14 +330,48 @@ var IBMiQueryCompiler = class extends QueryCompiler {
   _buildInsertData(insertValues, returningSql) {
     const insertData = this._prepInsert(insertValues);
     if (insertData.columns.length > 0) {
-      const columnsSql = `(${this.formatter.columnize(insertData.columns)})`;
-      const valuesSql = `(${this._buildInsertValues(insertData)})`;
-      return `${columnsSql} ${returningSql}values ${valuesSql}`;
+      const parts = [];
+      parts.push("(");
+      parts.push(this.formatter.columnize(insertData.columns));
+      parts.push(") ");
+      if (returningSql) {
+        parts.push(returningSql);
+      }
+      parts.push("values (");
+      const firstRowValues = insertData.values[0] || [];
+      const valueStrings = firstRowValues.map(() => "?");
+      parts.push(valueStrings.join(", "));
+      parts.push(")");
+      return parts.join("");
     }
     if (Array.isArray(insertValues) && insertValues.length === 1 && insertValues[0]) {
       return returningSql + this._emptyInsertValue;
     }
     return "";
+  }
+  generateCacheKey(data) {
+    if (Array.isArray(data) && data.length > 0) {
+      return Object.keys(data[0] || {}).sort().join("|");
+    }
+    if (data && typeof data === "object") {
+      return Object.keys(data).sort().join("|");
+    }
+    return "";
+  }
+  buildFromCache(data, cachedColumns) {
+    const dataArray = Array.isArray(data) ? data : data ? [data] : [];
+    const values = [];
+    for (const item of dataArray) {
+      if (item == null) {
+        break;
+      }
+      const row = cachedColumns.map((column) => item[column] ?? void 0);
+      values.push(row);
+    }
+    return {
+      columns: cachedColumns,
+      values
+    };
   }
   _prepInsert(data) {
     if (typeof data === "object" && data?.migration_time) {
@@ -289,24 +394,27 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     if (dataArray.length === 0) {
       return { columns: [], values: [] };
     }
-    const allColumns = /* @__PURE__ */ new Set();
-    for (const item of dataArray) {
-      if (item != null) {
-        Object.keys(item).forEach((key) => allColumns.add(key));
-      }
+    const firstItem = dataArray[0];
+    if (!firstItem || typeof firstItem !== "object") {
+      return { columns: [], values: [] };
     }
-    const columns = Array.from(allColumns).sort();
-    const values = [];
-    for (const item of dataArray) {
-      if (item == null) {
-        break;
-      }
-      const row = columns.map((column) => item[column] ?? void 0);
-      values.push(row);
+    const cacheKey = this.generateCacheKey(firstItem);
+    if (cacheKey && this.columnCache.has(cacheKey)) {
+      const cachedColumns = this.columnCache.get(cacheKey);
+      const row2 = cachedColumns.map((column) => firstItem[column] ?? void 0);
+      return {
+        columns: cachedColumns,
+        values: [row2]
+      };
     }
+    const columns = Object.keys(firstItem).sort();
+    if (cacheKey && columns.length > 0) {
+      this.columnCache.set(cacheKey, columns);
+    }
+    const row = columns.map((column) => firstItem[column] ?? void 0);
     return {
       columns,
-      values
+      values: [row]
     };
   }
   update() {
@@ -316,6 +424,7 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     const order = this.order();
     const limit = this.limit();
     const { returning } = this.single;
+    const optimizationHints = this.getOptimizationHints("update");
     const baseUpdateSql = [
       withSQL,
       `update ${this.single.only ? "only " : ""}${this.tableName}`,
@@ -323,7 +432,8 @@ var IBMiQueryCompiler = class extends QueryCompiler {
       updates.join(", "),
       where,
       order,
-      limit
+      limit,
+      optimizationHints
     ].filter(Boolean).join(" ");
     if (returning) {
       this.client.logger.warn?.(
@@ -355,15 +465,26 @@ var IBMiQueryCompiler = class extends QueryCompiler {
         return "";
     }
   }
+  getOptimizationHints(queryType, data) {
+    const hints = [];
+    if (queryType === "select") {
+      hints.push("WITH UR");
+    }
+    return hints.length > 0 ? " " + hints.join(" ") : "";
+  }
+  getSelectOptimizationHints(sql) {
+    const hints = [];
+    hints.push("WITH UR");
+    return hints.length > 0 ? " " + hints.join(" ") : "";
+  }
   columnizeWithPrefix(prefix, target) {
     const columns = typeof target === "string" ? [target] : target;
-    let str = "";
-    let i = -1;
-    while (++i < columns.length) {
-      if (i > 0) str += ", ";
-      str += prefix + this.wrap(columns[i]);
+    const parts = [];
+    for (let i = 0; i < columns.length; i++) {
+      if (i > 0) parts.push(", ");
+      parts.push(prefix + this.wrap(columns[i]));
     }
-    return str;
+    return parts.join("");
   }
 };
 var ibmi_querycompiler_default = IBMiQueryCompiler;
@@ -573,7 +694,6 @@ function createIBMiMigrationRunner(knex2, config) {
 // src/index.ts
 var DB2Client = class extends knex.Client {
   constructor(config) {
-    console.log("\u{1F3AF} DB2Client constructor called!");
     super(config);
     this.driverName = "odbc";
     if (this.dialect && !this.config.client) {
@@ -616,6 +736,7 @@ var DB2Client = class extends knex.Client {
     return odbc;
   }
   wrapIdentifierImpl(value) {
+    if (!value) return value;
     if (value.includes("KNEX_MIGRATIONS") || value.includes("knex_migrations")) {
       return value.toUpperCase();
     }
@@ -712,31 +833,17 @@ var DB2Client = class extends knex.Client {
       this.printDebug(`Query completed: ${method} (${endTime - startTime}ms)`);
       return queryObject;
     } catch (error) {
+      const wrappedError = this.wrapError(error, method, queryObject);
       if (this.isConnectionError(error)) {
         this.printError(
           `Connection error during ${method} query: ${error.message}`
         );
-        if (queryObject.sql?.toLowerCase().includes("systables")) {
-          this.printDebug("Retrying hasTable query due to connection error...");
-          try {
-            await new Promise((resolve) => setTimeout(resolve, 1e3));
-            if (this.isSelectMethod(method)) {
-              await this.executeSelectQuery(connection, queryObject);
-            } else {
-              await this.executeStatementQuery(connection, queryObject);
-            }
-            return queryObject;
-          } catch (retryError) {
-            this.printError(`Retry failed: ${retryError.message}`);
-            queryObject.response = { rows: [], rowCount: 0 };
-            return queryObject;
-          }
+        if (this.shouldRetryQuery(queryObject, method)) {
+          return await this.retryQuery(connection, queryObject, method);
         }
-        throw new Error(
-          `Connection closed during ${method} operation - IBM i DB2 DDL operations cause implicit commits`
-        );
+        throw wrappedError;
       }
-      throw error;
+      throw wrappedError;
     }
   }
   normalizeQueryObject(obj) {
@@ -827,45 +934,75 @@ var DB2Client = class extends knex.Client {
   }
   async _stream(connection, obj, stream, options) {
     if (!obj.sql) throw new Error("A query is required to stream results");
+    const optimizedFetchSize = options?.fetchSize || this.calculateOptimalFetchSize(obj.sql);
     return new Promise((resolve, reject) => {
-      stream.on("error", reject);
-      stream.on("end", resolve);
+      let isResolved = false;
+      const cleanup = () => {
+        if (!isResolved) {
+          isResolved = true;
+        }
+      };
+      stream.on("error", (err) => {
+        cleanup();
+        reject(err);
+      });
+      stream.on("end", () => {
+        cleanup();
+        resolve(void 0);
+      });
       connection.query(
         obj.sql,
         obj.bindings,
         {
           cursor: true,
-          fetchSize: options?.fetchSize || 1
+          fetchSize: optimizedFetchSize
         },
         (error, cursor) => {
           if (error) {
             this.printError(this.safeStringify(error, 2));
-            stream.emit("error", error);
+            cleanup();
             reject(error);
             return;
           }
           const readableStream = this._createCursorStream(cursor);
           readableStream.on("error", (err) => {
+            cleanup();
             reject(err);
-            stream.emit("error", err);
           });
           readableStream.pipe(stream);
         }
       );
     });
   }
+  calculateOptimalFetchSize(sql) {
+    const sqlLower = sql.toLowerCase();
+    const hasJoins = /\s+join\s+/i.test(sql);
+    const hasAggregates = /\s+(count|sum|avg|max|min)\s*\(/i.test(sql);
+    const hasOrderBy = /\s+order\s+by\s+/i.test(sql);
+    const hasGroupBy = /\s+group\s+by\s+/i.test(sql);
+    if (hasJoins || hasAggregates || hasOrderBy || hasGroupBy) {
+      return 500;
+    }
+    return 100;
+  }
   _createCursorStream(cursor) {
     const parentThis = this;
+    let isClosed = false;
     return new Readable({
       objectMode: true,
       read() {
+        if (isClosed) return;
         cursor.fetch((error, result) => {
           if (error) {
             parentThis.printError(parentThis.safeStringify(error, 2));
+            isClosed = true;
+            this.emit("error", error);
+            return;
           }
           if (!cursor.noData) {
             this.push(result);
           } else {
+            isClosed = true;
             cursor.close((closeError) => {
               if (closeError) {
                 parentThis.printError(JSON.stringify(closeError, null, 2));
@@ -877,6 +1014,19 @@ var DB2Client = class extends knex.Client {
             });
           }
         });
+      },
+      destroy(err, callback) {
+        if (!isClosed) {
+          isClosed = true;
+          cursor.close((closeError) => {
+            if (closeError) {
+              parentThis.printDebug("Error closing cursor during destroy: " + parentThis.safeStringify(closeError));
+            }
+            callback(err);
+          });
+        } else {
+          callback(err);
+        }
       }
     });
   }
@@ -908,15 +1058,16 @@ var DB2Client = class extends knex.Client {
         const result = obj.output(runner, response);
         return result;
       } catch (error) {
+        const wrappedError = this.wrapError(error, "custom_output", obj);
         this.printError(
-          `Custom output function failed: ${error.message || error}`
+          `Custom output function failed: ${wrappedError.message}`
         );
         if (this.isConnectionError(error)) {
           throw new Error(
             "Connection closed during query processing - consider using migrations.disableTransactions: true for DDL operations"
           );
         }
-        throw error;
+        throw wrappedError;
       }
     }
     const validationResult = this.validateResponse(obj);
@@ -934,9 +1085,61 @@ var DB2Client = class extends knex.Client {
     }
     return null;
   }
+  wrapError(error, method, queryObject) {
+    const context = {
+      method,
+      sql: queryObject.sql ? queryObject.sql.substring(0, 100) + "..." : "unknown",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    if (this.isConnectionError(error)) {
+      return new Error(
+        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+    if (this.isTimeoutError(error)) {
+      return new Error(
+        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+    if (this.isSQLError(error)) {
+      return new Error(
+        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+    return new Error(
+      `IBM i DB2 error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+    );
+  }
+  shouldRetryQuery(queryObject, method) {
+    return queryObject.sql?.toLowerCase().includes("systables") || queryObject.sql?.toLowerCase().includes("knex_migrations");
+  }
+  async retryQuery(connection, queryObject, method) {
+    this.printDebug(`Retrying ${method} query due to connection error...`);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1e3));
+      if (this.isSelectMethod(method)) {
+        await this.executeSelectQuery(connection, queryObject);
+      } else {
+        await this.executeStatementQuery(connection, queryObject);
+      }
+      return queryObject;
+    } catch (retryError) {
+      this.printError(`Retry failed: ${retryError.message}`);
+      queryObject.response = { rows: [], rowCount: 0 };
+      return queryObject;
+    }
+  }
   isConnectionError(error) {
     const errorMessage = (error.message || error.toString || error).toLowerCase();
     return errorMessage.includes("connection") && (errorMessage.includes("closed") || errorMessage.includes("invalid") || errorMessage.includes("terminated") || errorMessage.includes("not connected"));
+  }
+  isTimeoutError(error) {
+    const errorMessage = (error.message || error.toString || error).toLowerCase();
+    return errorMessage.includes("timeout") || errorMessage.includes("timed out");
+  }
+  isSQLError(error) {
+    const errorMessage = (error.message || error.toString || error).toLowerCase();
+    return errorMessage.includes("sql") || errorMessage.includes("syntax") || errorMessage.includes("table") || errorMessage.includes("column");
   }
   processSqlMethod(obj) {
     const { rows, rowCount } = obj.response;

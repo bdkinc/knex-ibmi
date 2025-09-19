@@ -36,7 +36,6 @@ enum SqlMethod {
 
 class DB2Client extends knex.Client {
   constructor(config: Knex.Config<DB2Config>) {
-    console.log("🎯 DB2Client constructor called!");
     super(config);
     this.driverName = "odbc";
 
@@ -91,16 +90,18 @@ class DB2Client extends knex.Client {
     // we don't want to use it since
     // it makes identifier case-sensitive in DB2
 
-    // Fix case sensitivity issues for IBM i migration tables
-    // Normalize migration-related table names to be consistent
+    if (!value) return value;
+
+    // Handle migration tables specifically - keep simple for now
     if (
       value.includes("KNEX_MIGRATIONS") ||
       value.includes("knex_migrations")
     ) {
-      // Ensure migration table names are uppercase for consistency
       return value.toUpperCase();
     }
 
+    // For now, just return the value as-is to avoid binding issues
+    // IBM i DB2 is case-insensitive by default anyway
     return value;
   }
 
@@ -234,36 +235,21 @@ class DB2Client extends knex.Client {
       return queryObject;
     } catch (error: any) {
       // Enhanced error handling for connection issues
+      const wrappedError = this.wrapError(error, method, queryObject);
+
       if (this.isConnectionError(error)) {
         this.printError(
           `Connection error during ${method} query: ${error.message}`
         );
 
         // For critical migration operations, retry once before failing
-        if (queryObject.sql?.toLowerCase().includes("systables")) {
-          this.printDebug("Retrying hasTable query due to connection error...");
-          try {
-            // Wait a moment and retry the query
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            if (this.isSelectMethod(method)) {
-              await this.executeSelectQuery(connection, queryObject);
-            } else {
-              await this.executeStatementQuery(connection, queryObject);
-            }
-            return queryObject;
-          } catch (retryError: any) {
-            this.printError(`Retry failed: ${retryError.message}`);
-            // If retry fails, return empty result to prevent migration corruption
-            queryObject.response = { rows: [], rowCount: 0 };
-            return queryObject;
-          }
+        if (this.shouldRetryQuery(queryObject, method)) {
+          return await this.retryQuery(connection, queryObject, method);
         }
 
-        throw new Error(
-          `Connection closed during ${method} operation - IBM i DB2 DDL operations cause implicit commits`
-        );
+        throw wrappedError;
       }
-      throw error;
+      throw wrappedError;
     }
   }
 
@@ -415,29 +401,46 @@ class DB2Client extends knex.Client {
   ) {
     if (!obj.sql) throw new Error("A query is required to stream results");
 
+    const optimizedFetchSize = options?.fetchSize || this.calculateOptimalFetchSize(obj.sql);
+
     return new Promise((resolve, reject) => {
-      stream.on("error", reject);
-      stream.on("end", resolve);
+      let isResolved = false;
+
+      const cleanup = () => {
+        if (!isResolved) {
+          isResolved = true;
+        }
+      };
+
+      stream.on("error", (err: any) => {
+        cleanup();
+        reject(err);
+      });
+
+      stream.on("end", () => {
+        cleanup();
+        resolve(undefined);
+      });
 
       connection.query(
         obj.sql,
         obj.bindings,
         {
           cursor: true,
-          fetchSize: options?.fetchSize || 1,
+          fetchSize: optimizedFetchSize,
         },
         (error, cursor) => {
           if (error) {
             this.printError(this.safeStringify(error, 2));
-            stream.emit("error", error);
+            cleanup();
             reject(error);
             return;
           }
 
           const readableStream = this._createCursorStream(cursor);
           readableStream.on("error", (err) => {
+            cleanup();
             reject(err);
-            stream.emit("error", err);
           });
           readableStream.pipe(stream);
         }
@@ -445,19 +448,43 @@ class DB2Client extends knex.Client {
     });
   }
 
+  private calculateOptimalFetchSize(sql: string): number {
+    const sqlLower = sql.toLowerCase();
+    const hasJoins = /\s+join\s+/i.test(sql);
+    const hasAggregates = /\s+(count|sum|avg|max|min)\s*\(/i.test(sql);
+    const hasOrderBy = /\s+order\s+by\s+/i.test(sql);
+    const hasGroupBy = /\s+group\s+by\s+/i.test(sql);
+
+    // For complex analytical queries, use larger fetch sizes
+    if (hasJoins || hasAggregates || hasOrderBy || hasGroupBy) {
+      return 500;
+    }
+
+    // For simple queries, use moderate fetch size
+    return 100;
+  }
+
   private _createCursorStream(cursor: any): Readable {
     const parentThis = this;
+    let isClosed = false;
+
     return new Readable({
       objectMode: true,
       read() {
+        if (isClosed) return;
+
         cursor.fetch((error: unknown, result: unknown) => {
           if (error) {
             parentThis.printError(parentThis.safeStringify(error, 2));
+            isClosed = true;
+            this.emit('error', error);
+            return;
           }
 
           if (!cursor.noData) {
             this.push(result);
           } else {
+            isClosed = true;
             cursor.close((closeError: unknown) => {
               if (closeError) {
                 parentThis.printError(JSON.stringify(closeError, null, 2));
@@ -470,6 +497,19 @@ class DB2Client extends knex.Client {
           }
         });
       },
+      destroy(err, callback) {
+        if (!isClosed) {
+          isClosed = true;
+          cursor.close((closeError: unknown) => {
+            if (closeError) {
+              parentThis.printDebug('Error closing cursor during destroy: ' + parentThis.safeStringify(closeError));
+            }
+            callback(err);
+          });
+        } else {
+          callback(err);
+        }
+      }
     });
   }
 
@@ -517,15 +557,16 @@ class DB2Client extends knex.Client {
         return result;
       } catch (error: any) {
         // Enhanced error handling for custom output functions
+        const wrappedError = this.wrapError(error, 'custom_output', obj);
         this.printError(
-          `Custom output function failed: ${error.message || error}`
+          `Custom output function failed: ${wrappedError.message}`
         );
         if (this.isConnectionError(error)) {
           throw new Error(
             "Connection closed during query processing - consider using migrations.disableTransactions: true for DDL operations"
           );
         }
-        throw error;
+        throw wrappedError;
       }
     }
 
@@ -553,6 +594,61 @@ class DB2Client extends knex.Client {
     return null;
   }
 
+  private wrapError(error: any, method: string, queryObject: any): Error {
+    const context = {
+      method,
+      sql: queryObject.sql ? queryObject.sql.substring(0, 100) + '...' : 'unknown',
+      timestamp: new Date().toISOString()
+    };
+
+    if (this.isConnectionError(error)) {
+      return new Error(
+        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+
+    if (this.isTimeoutError(error)) {
+      return new Error(
+        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+
+    if (this.isSQLError(error)) {
+      return new Error(
+        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      );
+    }
+
+    // Generic error with context
+    return new Error(
+      `IBM i DB2 error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+    );
+  }
+
+  private shouldRetryQuery(queryObject: any, method: string): boolean {
+    return queryObject.sql?.toLowerCase().includes("systables") ||
+           queryObject.sql?.toLowerCase().includes("knex_migrations");
+  }
+
+  private async retryQuery(connection: Connection, queryObject: any, method: string): Promise<any> {
+    this.printDebug(`Retrying ${method} query due to connection error...`);
+    try {
+      // Wait a moment and retry the query
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (this.isSelectMethod(method)) {
+        await this.executeSelectQuery(connection, queryObject);
+      } else {
+        await this.executeStatementQuery(connection, queryObject);
+      }
+      return queryObject;
+    } catch (retryError: any) {
+      this.printError(`Retry failed: ${retryError.message}`);
+      // If retry fails, return empty result to prevent migration corruption
+      queryObject.response = { rows: [], rowCount: 0 };
+      return queryObject;
+    }
+  }
+
   private isConnectionError(error: any): boolean {
     const errorMessage = (
       error.message ||
@@ -566,6 +662,27 @@ class DB2Client extends knex.Client {
         errorMessage.includes("terminated") ||
         errorMessage.includes("not connected"))
     );
+  }
+
+  private isTimeoutError(error: any): boolean {
+    const errorMessage = (
+      error.message ||
+      error.toString ||
+      error
+    ).toLowerCase();
+    return errorMessage.includes("timeout") || errorMessage.includes("timed out");
+  }
+
+  private isSQLError(error: any): boolean {
+    const errorMessage = (
+      error.message ||
+      error.toString ||
+      error
+    ).toLowerCase();
+    return errorMessage.includes("sql") ||
+           errorMessage.includes("syntax") ||
+           errorMessage.includes("table") ||
+           errorMessage.includes("column");
   }
 
   private processSqlMethod(obj: QueryObject): any {
