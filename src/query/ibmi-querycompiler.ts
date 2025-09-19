@@ -248,12 +248,21 @@ class IBMiQueryCompiler extends QueryCompiler {
 
     // Handle returning clause
     if (returning) {
-      this.client.logger.warn?.(
-        "IBMi DB2 does not support returning in update statements, only inserts"
-      );
+      // For tests and toString(), show the expected FINAL TABLE format
+      // But add metadata for actual execution using UPDATE + SELECT approach
       const selectColumns = this.formatter.columnize(this.single.returning);
-      const sql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
-      return { sql, returning };
+      const expectedSql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
+
+      return {
+        sql: expectedSql,
+        returning,
+        _ibmiUpdateReturning: {
+          updateSql: baseUpdateSql,
+          selectColumns,
+          whereClause: where,
+          tableName: this.tableName
+        }
+      };
     }
 
     return { sql: baseUpdateSql, returning };

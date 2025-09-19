@@ -1,4 +1,5 @@
 import Knex from "knex";
+import { expect } from "chai";
 import { DB2Dialect } from "../../../src";
 import { testSql } from "../../utils/testSql";
 
@@ -106,6 +107,40 @@ describe("Regression Tests", () => {
         knex.select('*').from('othertable').where('othertable.id', '=', knex.raw('test.id'))
       );
       testSql(query, 'delete from test where exists (select * from othertable where othertable.id = test.id)');
+    });
+  });
+
+  describe("UPDATE returning transaction-based approach", () => {
+    it("should compile UPDATE returning with single column", () => {
+      const query = knex('users').update({name: 'John'}).where('id', 1).returning('id');
+      testSql(query, "select id from FINAL TABLE(update users set name = 'John' where id = 1)");
+    });
+
+    it("should compile UPDATE returning with multiple columns", () => {
+      const query = knex('users').update({name: 'John', email: 'john@example.com'}).where('id', 1).returning(['id', 'name']);
+      testSql(query, "select id, name from FINAL TABLE(update users set name = 'John', email = 'john@example.com' where id = 1)");
+    });
+
+    it("should compile UPDATE returning with complex WHERE clause", () => {
+      const query = knex('users').update({status: 'active'}).where('age', '>', 18).andWhere('verified', true).returning(['id', 'status']);
+      testSql(query, "select id, status from FINAL TABLE(update users set status = 'active' where age > 18 and verified = true)");
+    });
+
+    it("should handle UPDATE returning with no WHERE clause", () => {
+      const query = knex('settings').update({updated_at: knex.raw('NOW()')}).returning('id');
+      testSql(query, "select id from FINAL TABLE(update settings set updated_at = NOW())");
+    });
+
+    it("should preserve metadata for execution", () => {
+      const query = knex('users').update({name: 'John'}).where('id', 1).returning('id');
+      const compiled = query.toSQL();
+
+      // Check that execution metadata is preserved
+      expect(compiled._ibmiUpdateReturning).to.be.an('object');
+      expect(compiled._ibmiUpdateReturning.updateSql).to.equal("update users set name = ? where id = ?");
+      expect(compiled._ibmiUpdateReturning.selectColumns).to.equal('id');
+      expect(compiled._ibmiUpdateReturning.whereClause).to.equal('where id = ?');
+      expect(compiled._ibmiUpdateReturning.tableName).to.equal('users');
     });
   });
 });

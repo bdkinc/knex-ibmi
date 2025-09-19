@@ -198,6 +198,11 @@ class DB2Client extends knex.Client {
     const method = this.determineQueryMethod(queryObject);
     queryObject.sqlMethod = method;
 
+    // Special handling for UPDATE with returning clause
+    if (queryObject._ibmiUpdateReturning) {
+      return await this.executeUpdateReturning(connection, queryObject);
+    }
+
     // Debug migration queries (only if DEBUG environment variable is set)
     if (
       process.env.DEBUG === "true" &&
@@ -250,6 +255,52 @@ class DB2Client extends knex.Client {
         throw wrappedError;
       }
       throw wrappedError;
+    }
+  }
+
+  /**
+   * Execute UPDATE with returning clause using transaction + SELECT approach
+   * Since IBM i DB2 doesn't support FINAL TABLE with UPDATE, we:
+   * 1. Execute the UPDATE statement
+   * 2. Execute a SELECT to get the updated values using the same WHERE clause
+   */
+  private async executeUpdateReturning(connection: Connection, obj: any): Promise<any> {
+    const { _ibmiUpdateReturning } = obj;
+    const { updateSql, selectColumns, whereClause, tableName } = _ibmiUpdateReturning;
+
+    this.printDebug("Executing UPDATE with returning using transaction approach");
+
+    try {
+      // Execute the UPDATE statement
+      const updateObj = {
+        sql: updateSql,
+        bindings: obj.bindings,
+        sqlMethod: 'update'
+      };
+
+      await this.executeStatementQuery(connection, updateObj);
+
+      // Build and execute SELECT to get the updated values
+      const selectSql = whereClause
+        ? `select ${selectColumns} from ${tableName} ${whereClause}`
+        : `select ${selectColumns} from ${tableName}`;
+
+      const selectObj = {
+        sql: selectSql,
+        bindings: obj.bindings,
+        sqlMethod: 'select'
+      };
+
+      await this.executeSelectQuery(connection, selectObj);
+
+      // Return the SELECT results as the final response
+      obj.response = selectObj.response;
+      obj.sqlMethod = 'update';
+      return obj;
+
+    } catch (error: any) {
+      this.printError(`UPDATE with returning failed: ${error.message}`);
+      throw this.wrapError(error, 'update_returning', obj);
     }
   }
 
