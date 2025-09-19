@@ -36,15 +36,71 @@ class IBMiQueryCompiler extends QueryCompiler {
       return "";
     }
 
-    // Get the standard INSERT statement from parent class
+    // Decide multi-row insert strategy (default: allow multi-row single statement)
+    const ibmiConfig = this.client?.config?.ibmi || {};
+    const multiRowStrategy = ibmiConfig.multiRowInsert || "auto"; // 'auto' | 'sequential' | 'disabled'
+
+    // When disabled, or sequential strategy with >1 rows, fall back to first row only SQL generation here.
+    // Sequential execution of additional rows is handled at runtime in the client (future enhancement).
+    const isArrayInsert =
+      Array.isArray(insertValues) && insertValues.length > 1;
+    // Keep original values for sequential strategy metadata
+    const originalValues = isArrayInsert ? insertValues.slice() : insertValues;
+    const forceSingleRow =
+      multiRowStrategy === "disabled" ||
+      (multiRowStrategy === "sequential" && isArrayInsert);
+
+    // If forcing single row, keep legacy single-row path by trimming to first element
+    let workingValues: any = insertValues;
+    if (forceSingleRow && isArrayInsert) {
+      workingValues = [insertValues[0]];
+      this.single.insert = workingValues; // mutate for downstream calls
+    }
+
+    // Get the standard INSERT statement from parent class (will include multi-row SQL if available)
     const standardInsert = super.insert();
 
     // If it's an object with sql property, use that; otherwise use the string directly
-    const insertSql = typeof standardInsert === 'object' && standardInsert.sql ? standardInsert.sql : standardInsert;
+    const insertSql =
+      typeof standardInsert === "object" && standardInsert.sql
+        ? standardInsert.sql
+        : standardInsert;
 
     // For IBM i, wrap INSERT with FINAL TABLE and return IDENTITY_VAL_LOCAL()
-    const selectColumns = "IDENTITY_VAL_LOCAL()";
+    // If returning specified by user, select those columns from FINAL TABLE.
+    // If multi-row and no returning specified, prefer selecting * so calling code could derive identities (lenient fallback);
+    // otherwise keep legacy IDENTITY_VAL_LOCAL() (last identity) for single-row.
+    const multiRow = isArrayInsert && !forceSingleRow;
+    if (multiRow && returning === "*") {
+      // Ambiguous scenario; '*' may be large. Keep for lenient fallback.
+      if (this.client?.printWarn) {
+        this.client.printWarn("multi-row insert with returning * may be large");
+      }
+    }
+    const selectColumns = returning
+      ? this.formatter.columnize(returning)
+      : multiRow
+        ? "*"
+        : "IDENTITY_VAL_LOCAL()";
     const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
+
+    // Add metadata for sequential strategy so runtime can execute remaining rows
+    if (multiRowStrategy === "sequential" && isArrayInsert) {
+      // Build column list using first row keys (sorted to match _prepInsert logic)
+      const first = originalValues[0];
+      const columns = Object.keys(first).sort();
+      return {
+        sql,
+        returning: undefined,
+        _ibmiSequentialInsert: {
+          columns,
+          rows: originalValues,
+          tableName: this.tableName,
+          returning: returning || null,
+          identityOnly: !returning,
+        },
+      };
+    }
 
     return { sql, returning: undefined };
   }
@@ -93,53 +149,48 @@ class IBMiQueryCompiler extends QueryCompiler {
   _buildInsertData(insertValues: string | any[], returningSql: string): string {
     const insertData = this._prepInsert(insertValues);
 
-    // Handle case with columns and data
     if (insertData.columns.length > 0) {
-      // IBM i DB2 doesn't handle multi-row inserts well via ODBC
-      // Use single-row insert format for better compatibility
       const parts: string[] = [];
-      parts.push('(');
-      parts.push(this.formatter.columnize(insertData.columns));
-      parts.push(') ');
-      if (returningSql) {
-        parts.push(returningSql);
+      parts.push("(" + this.formatter.columnize(insertData.columns) + ") ");
+      if (returningSql) parts.push(returningSql);
+      parts.push("values ");
+
+      const rowsSql: string[] = [];
+      for (const row of insertData.values) {
+        const placeholders = row.map(() => "?").join(", ");
+        rowsSql.push("(" + placeholders + ")");
       }
-      parts.push('values (');
-
-      // Build values for the first row only (IBM i limitation)
-      const firstRowValues = insertData.values[0] || [];
-      const valueStrings = firstRowValues.map(() => '?');
-      parts.push(valueStrings.join(', '));
-
-      parts.push(')');
-      return parts.join('');
+      parts.push(rowsSql.join(", "));
+      return parts.join("");
     }
 
-    // Handle a single empty object case
     if (
       Array.isArray(insertValues) &&
       insertValues.length === 1 &&
       insertValues[0]
     ) {
-      return returningSql + this._emptyInsertValue;
+      return (returningSql || "") + this._emptyInsertValue;
     }
-
-    // Handle empty/invalid data
     return "";
   }
 
   private generateCacheKey(data: any): string {
     if (Array.isArray(data) && data.length > 0) {
       // Use the keys of the first object as cache key
-      return Object.keys(data[0] || {}).sort().join('|');
+      return Object.keys(data[0] || {})
+        .sort()
+        .join("|");
     }
-    if (data && typeof data === 'object') {
-      return Object.keys(data).sort().join('|');
+    if (data && typeof data === "object") {
+      return Object.keys(data).sort().join("|");
     }
-    return '';
+    return "";
   }
 
-  private buildFromCache(data: any, cachedColumns: string[]): { columns: any; values: any } {
+  private buildFromCache(
+    data: any,
+    cachedColumns: string[]
+  ): { columns: any; values: any } {
     const dataArray = Array.isArray(data) ? data : data ? [data] : [];
     const values: any[] = [];
 
@@ -186,42 +237,32 @@ class IBMiQueryCompiler extends QueryCompiler {
       return { columns: [], values: [] };
     }
 
-    // IBM i DB2 via ODBC has issues with multi-row inserts
-    // Process only the first row for now
+    // Multi-row support: build unified column list from first row, then map all rows
     const firstItem = dataArray[0];
-    if (!firstItem || typeof firstItem !== 'object') {
+    if (!firstItem || typeof firstItem !== "object") {
       return { columns: [], values: [] };
     }
 
-    // Try to use cache for performance with repeated operations
     const cacheKey = this.generateCacheKey(firstItem);
+    let columns: string[];
     if (cacheKey && this.columnCache.has(cacheKey)) {
-      const cachedColumns = this.columnCache.get(cacheKey)!;
-      const row = cachedColumns.map((column) => firstItem[column] ?? undefined);
-      return {
-        columns: cachedColumns,
-        values: [row],
-      };
+      columns = this.columnCache.get(cacheKey)!;
+    } else {
+      columns = Object.keys(firstItem).sort();
+      if (cacheKey && columns.length > 0)
+        this.columnCache.set(cacheKey, columns);
     }
 
-    // Get columns from first item only
-    const columns = Object.keys(firstItem).sort();
-
-    // Cache the columns for future use
-    if (cacheKey && columns.length > 0) {
-      this.columnCache.set(cacheKey, columns);
+    const values: any[] = [];
+    for (const item of dataArray) {
+      if (!item || typeof item !== "object") continue;
+      values.push(columns.map((c) => item[c] ?? undefined));
     }
 
-    // Build values for first row only
-    const row = columns.map((column) => firstItem[column] ?? undefined);
-
-    return {
-      columns,
-      values: [row],
-    };
+    return { columns, values };
   }
 
-  update(): { sql: string; returning: any } {
+  update(): { sql: string; returning: any; _ibmiUpdateReturning?: any } {
     const withSQL = this.with();
     const updates = this._prepUpdate(this.single.update);
     const where = this.where();
@@ -230,7 +271,7 @@ class IBMiQueryCompiler extends QueryCompiler {
     const { returning } = this.single;
 
     // Add IBM i v7r3+ optimization hints for UPDATE
-    const optimizationHints = '';
+    const optimizationHints = "";
 
     // Build the base update statement
     const baseUpdateSql = [
@@ -241,7 +282,7 @@ class IBMiQueryCompiler extends QueryCompiler {
       where,
       order,
       limit,
-      optimizationHints
+      optimizationHints,
     ]
       .filter(Boolean)
       .join(" ");
@@ -260,12 +301,37 @@ class IBMiQueryCompiler extends QueryCompiler {
           updateSql: baseUpdateSql,
           selectColumns,
           whereClause: where,
-          tableName: this.tableName
-        }
+          tableName: this.tableName,
+        },
       };
     }
 
     return { sql: baseUpdateSql, returning };
+  }
+
+  // Emulate DELETE ... RETURNING by compiling a FINAL TABLE wrapper for display and attaching metadata
+  del(): { sql: string; returning: any; _ibmiDeleteReturning?: any } {
+    const baseDelete = super.del();
+    const { returning } = this.single;
+    if (!returning) {
+      return { sql: baseDelete as string, returning: undefined };
+    }
+    const deleteSql =
+      typeof baseDelete === "object" && (baseDelete as any).sql
+        ? (baseDelete as any).sql
+        : baseDelete;
+    const selectColumns = this.formatter.columnize(returning);
+    const expectedSql = `select ${selectColumns} from FINAL TABLE(${deleteSql})`;
+    return {
+      sql: expectedSql,
+      returning,
+      _ibmiDeleteReturning: {
+        deleteSql,
+        selectColumns,
+        whereClause: this.where(),
+        tableName: this.tableName,
+      },
+    };
   }
 
   /**
@@ -294,11 +360,11 @@ class IBMiQueryCompiler extends QueryCompiler {
 
     // IBM i DB2 doesn't support OPTIMIZE FOR in all contexts
     // Use WITH UR (Uncommitted Read) for better concurrency instead
-    if (queryType === 'select') {
-      hints.push('WITH UR'); // Uncommitted Read for better performance on read-heavy workloads
+    if (queryType === "select") {
+      hints.push("WITH UR"); // Uncommitted Read for better performance on read-heavy workloads
     }
 
-    return hints.length > 0 ? ' ' + hints.join(' ') : '';
+    return hints.length > 0 ? " " + hints.join(" ") : "";
   }
 
   private getSelectOptimizationHints(sql: string): string {
@@ -306,9 +372,9 @@ class IBMiQueryCompiler extends QueryCompiler {
 
     // Only use WITH UR for read operations on IBM i DB2
     // OPTIMIZE FOR syntax causes errors on this IBM i version
-    hints.push('WITH UR');
+    hints.push("WITH UR");
 
-    return hints.length > 0 ? ' ' + hints.join(' ') : '';
+    return hints.length > 0 ? " " + hints.join(" ") : "";
   }
 
   columnizeWithPrefix(prefix: string, target: string | string[]) {
@@ -320,7 +386,7 @@ class IBMiQueryCompiler extends QueryCompiler {
       parts.push(prefix + this.wrap(columns[i]));
     }
 
-    return parts.join('');
+    return parts.join("");
   }
 }
 

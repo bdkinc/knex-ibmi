@@ -54,6 +54,15 @@ declare class DB2Client extends knex.Client {
     destroyRawConnection(connection: any): Promise<any>;
     _getConnectionString(connectionConfig: DB2ConnectionConfig): string;
     _query(connection: Connection, obj: any): Promise<any>;
+    /**
+     * Execute UPDATE with returning clause using transaction + SELECT approach
+     * Since IBM i DB2 doesn't support FINAL TABLE with UPDATE, we:
+     * 1. Execute the UPDATE statement
+     * 2. Execute a SELECT to get the updated values using the same WHERE clause
+     */
+    private executeUpdateReturning;
+    private executeSequentialInsert;
+    private executeDeleteReturning;
     private normalizeQueryObject;
     private determineQueryMethod;
     private isSelectMethod;
@@ -137,6 +146,10 @@ interface DB2Config extends Knex.Config {
     client: any;
     connection: DB2ConnectionConfig;
     pool?: DB2PoolConfig;
+    ibmi?: {
+        multiRowInsert?: "auto" | "sequential" | "disabled";
+        sequentialInsertTransactional?: boolean;
+    };
 }
 declare const DB2Dialect: typeof DB2Client;
 

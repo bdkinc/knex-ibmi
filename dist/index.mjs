@@ -280,10 +280,6 @@ var IBMiQueryCompiler = class extends QueryCompiler {
   // Override select method to add IBM i optimization hints
   select() {
     const originalResult = super.select.call(this);
-    if (typeof originalResult === "string") {
-      const optimizationHints = this.getSelectOptimizationHints(originalResult);
-      return originalResult + optimizationHints;
-    }
     return originalResult;
   }
   formatTimestampLocal(date) {
@@ -305,10 +301,42 @@ var IBMiQueryCompiler = class extends QueryCompiler {
       }
       return "";
     }
-    if (returning) {
-      this.client.logger.warn?.("IBM i DB2 RETURNING clause in INSERT may not work via ODBC");
+    const ibmiConfig = this.client?.config?.ibmi || {};
+    const multiRowStrategy = ibmiConfig.multiRowInsert || "auto";
+    const isArrayInsert = Array.isArray(insertValues) && insertValues.length > 1;
+    const originalValues = isArrayInsert ? insertValues.slice() : insertValues;
+    const forceSingleRow = multiRowStrategy === "disabled" || multiRowStrategy === "sequential" && isArrayInsert;
+    let workingValues = insertValues;
+    if (forceSingleRow && isArrayInsert) {
+      workingValues = [insertValues[0]];
+      this.single.insert = workingValues;
     }
-    return super.insert();
+    const standardInsert = super.insert();
+    const insertSql = typeof standardInsert === "object" && standardInsert.sql ? standardInsert.sql : standardInsert;
+    const multiRow = isArrayInsert && !forceSingleRow;
+    if (multiRow && returning === "*") {
+      if (this.client?.printWarn) {
+        this.client.printWarn("multi-row insert with returning * may be large");
+      }
+    }
+    const selectColumns = returning ? this.formatter.columnize(returning) : multiRow ? "*" : "IDENTITY_VAL_LOCAL()";
+    const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
+    if (multiRowStrategy === "sequential" && isArrayInsert) {
+      const first = originalValues[0];
+      const columns = Object.keys(first).sort();
+      return {
+        sql,
+        returning: void 0,
+        _ibmiSequentialInsert: {
+          columns,
+          rows: originalValues,
+          tableName: this.tableName,
+          returning: returning || null,
+          identityOnly: !returning
+        }
+      };
+    }
+    return { sql, returning: void 0 };
   }
   isEmptyInsertValues(insertValues) {
     return Array.isArray(insertValues) && insertValues.length === 0 || this.isEmptyObject(insertValues);
@@ -331,21 +359,19 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     const insertData = this._prepInsert(insertValues);
     if (insertData.columns.length > 0) {
       const parts = [];
-      parts.push("(");
-      parts.push(this.formatter.columnize(insertData.columns));
-      parts.push(") ");
-      if (returningSql) {
-        parts.push(returningSql);
+      parts.push("(" + this.formatter.columnize(insertData.columns) + ") ");
+      if (returningSql) parts.push(returningSql);
+      parts.push("values ");
+      const rowsSql = [];
+      for (const row of insertData.values) {
+        const placeholders = row.map(() => "?").join(", ");
+        rowsSql.push("(" + placeholders + ")");
       }
-      parts.push("values (");
-      const firstRowValues = insertData.values[0] || [];
-      const valueStrings = firstRowValues.map(() => "?");
-      parts.push(valueStrings.join(", "));
-      parts.push(")");
+      parts.push(rowsSql.join(", "));
       return parts.join("");
     }
     if (Array.isArray(insertValues) && insertValues.length === 1 && insertValues[0]) {
-      return returningSql + this._emptyInsertValue;
+      return (returningSql || "") + this._emptyInsertValue;
     }
     return "";
   }
@@ -399,23 +425,20 @@ var IBMiQueryCompiler = class extends QueryCompiler {
       return { columns: [], values: [] };
     }
     const cacheKey = this.generateCacheKey(firstItem);
+    let columns;
     if (cacheKey && this.columnCache.has(cacheKey)) {
-      const cachedColumns = this.columnCache.get(cacheKey);
-      const row2 = cachedColumns.map((column) => firstItem[column] ?? void 0);
-      return {
-        columns: cachedColumns,
-        values: [row2]
-      };
+      columns = this.columnCache.get(cacheKey);
+    } else {
+      columns = Object.keys(firstItem).sort();
+      if (cacheKey && columns.length > 0)
+        this.columnCache.set(cacheKey, columns);
     }
-    const columns = Object.keys(firstItem).sort();
-    if (cacheKey && columns.length > 0) {
-      this.columnCache.set(cacheKey, columns);
+    const values = [];
+    for (const item of dataArray) {
+      if (!item || typeof item !== "object") continue;
+      values.push(columns.map((c) => item[c] ?? void 0));
     }
-    const row = columns.map((column) => firstItem[column] ?? void 0);
-    return {
-      columns,
-      values: [row]
-    };
+    return { columns, values };
   }
   update() {
     const withSQL = this.with();
@@ -424,7 +447,7 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     const order = this.order();
     const limit = this.limit();
     const { returning } = this.single;
-    const optimizationHints = this.getOptimizationHints("update");
+    const optimizationHints = "";
     const baseUpdateSql = [
       withSQL,
       `update ${this.single.only ? "only " : ""}${this.tableName}`,
@@ -436,14 +459,41 @@ var IBMiQueryCompiler = class extends QueryCompiler {
       optimizationHints
     ].filter(Boolean).join(" ");
     if (returning) {
-      this.client.logger.warn?.(
-        "IBMi DB2 does not support returning in update statements, only inserts"
-      );
       const selectColumns = this.formatter.columnize(this.single.returning);
-      const sql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
-      return { sql, returning };
+      const expectedSql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
+      return {
+        sql: expectedSql,
+        returning,
+        _ibmiUpdateReturning: {
+          updateSql: baseUpdateSql,
+          selectColumns,
+          whereClause: where,
+          tableName: this.tableName
+        }
+      };
     }
     return { sql: baseUpdateSql, returning };
+  }
+  // Emulate DELETE ... RETURNING by compiling a FINAL TABLE wrapper for display and attaching metadata
+  del() {
+    const baseDelete = super.del();
+    const { returning } = this.single;
+    if (!returning) {
+      return { sql: baseDelete, returning: void 0 };
+    }
+    const deleteSql = typeof baseDelete === "object" && baseDelete.sql ? baseDelete.sql : baseDelete;
+    const selectColumns = this.formatter.columnize(returning);
+    const expectedSql = `select ${selectColumns} from FINAL TABLE(${deleteSql})`;
+    return {
+      sql: expectedSql,
+      returning,
+      _ibmiDeleteReturning: {
+        deleteSql,
+        selectColumns,
+        whereClause: this.where(),
+        tableName: this.tableName
+      }
+    };
   }
   /**
    * Handle returning clause for IBMi DB2 queries
@@ -811,6 +861,15 @@ var DB2Client = class extends knex.Client {
     const queryObject = this.normalizeQueryObject(obj);
     const method = this.determineQueryMethod(queryObject);
     queryObject.sqlMethod = method;
+    if (queryObject._ibmiUpdateReturning) {
+      return await this.executeUpdateReturning(connection, queryObject);
+    }
+    if (queryObject._ibmiSequentialInsert) {
+      return await this.executeSequentialInsert(connection, queryObject);
+    }
+    if (queryObject._ibmiDeleteReturning) {
+      return await this.executeDeleteReturning(connection, queryObject);
+    }
     if (process.env.DEBUG === "true" && queryObject.sql && (queryObject.sql.toLowerCase().includes("create table") || queryObject.sql.toLowerCase().includes("knex_migrations"))) {
       this.printDebug(
         `Executing ${method} query: ${queryObject.sql.substring(0, 200)}...`
@@ -844,6 +903,130 @@ var DB2Client = class extends knex.Client {
         throw wrappedError;
       }
       throw wrappedError;
+    }
+  }
+  /**
+   * Execute UPDATE with returning clause using transaction + SELECT approach
+   * Since IBM i DB2 doesn't support FINAL TABLE with UPDATE, we:
+   * 1. Execute the UPDATE statement
+   * 2. Execute a SELECT to get the updated values using the same WHERE clause
+   */
+  async executeUpdateReturning(connection, obj) {
+    const { _ibmiUpdateReturning } = obj;
+    const { updateSql, selectColumns, whereClause, tableName } = _ibmiUpdateReturning;
+    this.printDebug(
+      "Executing UPDATE with returning using transaction approach"
+    );
+    try {
+      const updateObj = {
+        sql: updateSql,
+        bindings: obj.bindings,
+        sqlMethod: "update"
+      };
+      await this.executeStatementQuery(connection, updateObj);
+      const selectSql = whereClause ? `select ${selectColumns} from ${tableName} ${whereClause}` : `select ${selectColumns} from ${tableName}`;
+      const updateSqlParts = updateSql.split(" where ");
+      const setClausePart = updateSqlParts[0];
+      const setBindingCount = (setClausePart.match(/\?/g) || []).length;
+      const whereBindings = obj.bindings ? obj.bindings.slice(setBindingCount) : [];
+      const selectObj = {
+        sql: selectSql,
+        bindings: whereBindings,
+        sqlMethod: "select",
+        response: void 0
+      };
+      await this.executeSelectQuery(connection, selectObj);
+      obj.response = selectObj.response;
+      obj.sqlMethod = "update";
+      obj.select = true;
+      return obj;
+    } catch (error) {
+      this.printError(`UPDATE with returning failed: ${error.message}`);
+      throw this.wrapError(error, "update_returning", obj);
+    }
+  }
+  async executeSequentialInsert(connection, obj) {
+    const meta = obj._ibmiSequentialInsert;
+    const { rows, columns, tableName, returning, identityOnly } = meta;
+    this.printDebug("Executing sequential multi-row insert");
+    const insertedRows = [];
+    const transactional = this.config?.ibmi?.sequentialInsertTransactional === true;
+    let beganTx = false;
+    if (transactional) {
+      try {
+        await connection.query("BEGIN");
+        beganTx = true;
+      } catch (e) {
+        this.printWarn(
+          "Could not begin transaction for sequential insert; proceeding without"
+        );
+      }
+    }
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const colList = columns.join(", ");
+      const placeholders = columns.map(() => "?").join(", ");
+      const singleValues = columns.map((c) => row[c]);
+      const baseInsert = `insert into ${tableName} (${colList}) values (${placeholders})`;
+      const selectCols = returning ? this.queryCompiler({}).formatter.columnize(returning) : "IDENTITY_VAL_LOCAL()";
+      const wrapped = `select ${selectCols} from FINAL TABLE(${baseInsert})`;
+      const singleObj = {
+        sql: wrapped,
+        bindings: singleValues,
+        sqlMethod: "insert",
+        response: void 0
+      };
+      await this.executeStatementQuery(connection, singleObj);
+      const resp = singleObj.response?.rows;
+      if (resp) insertedRows.push(...resp);
+    }
+    if (transactional && beganTx) {
+      try {
+        await connection.query("COMMIT");
+      } catch (commitErr) {
+        this.printError(
+          "Commit failed for sequential insert, attempting rollback: " + commitErr?.message
+        );
+        try {
+          await connection.query("ROLLBACK");
+        } catch {
+        }
+        throw commitErr;
+      }
+    }
+    obj.response = { rows: insertedRows, rowCount: insertedRows.length };
+    obj.sqlMethod = "insert";
+    obj.select = true;
+    return obj;
+  }
+  async executeDeleteReturning(connection, obj) {
+    const meta = obj._ibmiDeleteReturning;
+    const { deleteSql, selectColumns, whereClause, tableName } = meta;
+    this.printDebug("Executing DELETE with returning emulation");
+    try {
+      const selectSql = whereClause ? `select ${selectColumns} from ${tableName} ${whereClause}` : `select ${selectColumns} from ${tableName}`;
+      const selectObj = {
+        sql: selectSql,
+        bindings: obj.bindings,
+        sqlMethod: "select",
+        response: void 0
+      };
+      await this.executeSelectQuery(connection, selectObj);
+      const rowsToReturn = selectObj.response?.rows || [];
+      const deleteObj = {
+        sql: deleteSql,
+        bindings: obj.bindings,
+        sqlMethod: "del",
+        response: void 0
+      };
+      await this.executeStatementQuery(connection, deleteObj);
+      obj.response = { rows: rowsToReturn, rowCount: rowsToReturn.length };
+      obj.sqlMethod = "del";
+      obj.select = true;
+      return obj;
+    } catch (error) {
+      this.printError(`DELETE with returning failed: ${error.message}`);
+      throw this.wrapError(error, "delete_returning", obj);
     }
   }
   normalizeQueryObject(obj) {
@@ -1020,7 +1203,9 @@ var DB2Client = class extends knex.Client {
           isClosed = true;
           cursor.close((closeError) => {
             if (closeError) {
-              parentThis.printDebug("Error closing cursor during destroy: " + parentThis.safeStringify(closeError));
+              parentThis.printDebug(
+                "Error closing cursor during destroy: " + parentThis.safeStringify(closeError)
+              );
             }
             callback(err);
           });
