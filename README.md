@@ -324,8 +324,9 @@ ibmi-migrations migrate:make <name>    # Create new migration file
 # Options:
 ibmi-migrations migrate:status --env production
 ibmi-migrations migrate:latest --knexfile ./config/knexfile.js
+ibmi-migrations migrate:latest --knexfile ./knexfile.ts        # Use TypeScript knexfile
 ibmi-migrations migrate:make create_users_table
-ibmi-migrations migrate:make add_email_column -x ts      # TypeScript migration
+ibmi-migrations migrate:make add_email_column -x ts            # TypeScript migration
 ```
 
 📖 **See [MIGRATIONS.md](./MIGRATIONS.md) for complete documentation**

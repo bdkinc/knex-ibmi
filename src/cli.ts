@@ -10,6 +10,7 @@
  *   ibmi-migrations migrate:status         - Show migration status
  *   ibmi-migrations migrate:currentVersion - Show current migration version
  *   ibmi-migrations migrate:list           - List all migrations
+ *   ibmi-migrations migrate:make <name>    - Create new migration file
  *
  * Legacy aliases (for backward compatibility):
  *   ibmi-migrations latest    - Same as migrate:latest
@@ -18,10 +19,14 @@
  *
  * Options:
  *   --env <environment>     - Specify environment (default: development)
- *   --knexfile <file>       - Specify knexfile path (default: ./knexfile.js)
+ *   --knexfile <file>       - Specify knexfile path (supports .js and .ts)
+ *   -x <extension>          - File extension for new migrations (js|ts)
  *   --help                  - Show this help message
  *
- * Make sure you have a knexfile.js in your project root.
+ * TypeScript Support:
+ *   The CLI fully supports TypeScript knexfiles and migrations.
+ *   Use --knexfile knexfile.ts to load a TypeScript configuration.
+ *   Use -x ts when creating migrations to generate TypeScript files.
  */
 
 import knex, { Knex } from "knex";
@@ -76,6 +81,9 @@ function showHelp(): void {
     "  --knexfile <file>      - Specify knexfile path (default: ./knexfile.js)"
   );
   console.log(
+    "                         - Supports both .js and .ts knexfiles"
+  );
+  console.log(
     "  -x <extension>         - File extension for new migrations (js|ts)"
   );
   console.log("  --help                 - Show this help message");
@@ -84,6 +92,7 @@ function showHelp(): void {
   console.log("  ibmi-migrations migrate:latest");
   console.log("  ibmi-migrations migrate:rollback");
   console.log("  ibmi-migrations migrate:status --env production");
+  console.log("  ibmi-migrations migrate:latest --knexfile knexfile.ts");
   console.log("  ibmi-migrations migrate:make create_users_table");
   console.log("  ibmi-migrations migrate:make add_email_to_users -x ts");
   console.log("  ibmi-migrations latest --knexfile ./config/knexfile.js");
@@ -162,7 +171,7 @@ export const down = (knex) => {
 }
 
 function getTsMigrationTemplate(migrationName: string): string {
-  return `import { Knex } from "knex";
+  return `import type { Knex } from "knex";
 
 export const up = async (knex: Knex): Promise<void> => {
   // Add your migration logic here
