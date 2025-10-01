@@ -17,7 +17,7 @@ describe("IBMi Client", () => {
       const connectionConfig = {
         host: "localhost",
         database: "testdb",
-        port: 50000,
+        port: 8471,
         user: "db2inst1",
         password: "password",
         driver: "{IBM Cli Driver}",

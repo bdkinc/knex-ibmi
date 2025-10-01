@@ -256,6 +256,9 @@ function showHelp() {
     "  --knexfile <file>      - Specify knexfile path (default: ./knexfile.js)"
   );
   console.log(
+    "                         - Supports both .js and .ts knexfiles"
+  );
+  console.log(
     "  -x <extension>         - File extension for new migrations (js|ts)"
   );
   console.log("  --help                 - Show this help message");
@@ -264,6 +267,7 @@ function showHelp() {
   console.log("  ibmi-migrations migrate:latest");
   console.log("  ibmi-migrations migrate:rollback");
   console.log("  ibmi-migrations migrate:status --env production");
+  console.log("  ibmi-migrations migrate:latest --knexfile knexfile.ts");
   console.log("  ibmi-migrations migrate:make create_users_table");
   console.log("  ibmi-migrations migrate:make add_email_to_users -x ts");
   console.log("  ibmi-migrations latest --knexfile ./config/knexfile.js");
@@ -334,7 +338,7 @@ export const down = (knex) => {
 `;
 }
 function getTsMigrationTemplate(migrationName) {
-  return `import { Knex } from "knex";
+  return `import type { Knex } from "knex";
 
 export const up = async (knex: Knex): Promise<void> => {
   // Add your migration logic here

@@ -92,9 +92,63 @@ ibmi-migrations status                 # Same as migrate:status
 # Options:
 ibmi-migrations migrate:status --env production
 ibmi-migrations migrate:latest --knexfile ./config/knexfile.js
+ibmi-migrations migrate:latest --knexfile ./knexfile.ts        # Use TypeScript knexfile
 ibmi-migrations migrate:make create_users_table
-ibmi-migrations migrate:make add_email_column -x ts      # TypeScript migration
+ibmi-migrations migrate:make add_email_column -x ts            # TypeScript migration
 ```
+
+## TypeScript Support
+
+The ibmi-migrations CLI has full support for TypeScript projects:
+
+### Using TypeScript Knexfiles
+
+The CLI can automatically load and use TypeScript knexfiles (`.ts` extension):
+
+```bash
+# Explicitly specify a TypeScript knexfile
+npx ibmi-migrations migrate:latest --knexfile knexfile.ts
+npx ibmi-migrations migrate:status --knexfile ./config/knexfile.ts
+
+# The CLI automatically detects and loads .ts files
+```
+
+### Creating TypeScript Migrations
+
+Use the `-x ts` flag to create TypeScript migration files:
+
+```bash
+# Create a TypeScript migration
+npx ibmi-migrations migrate:make create_users_table -x ts
+
+# The generated file will have proper TypeScript types
+```
+
+### Running TypeScript Migrations
+
+The migration runner automatically detects and runs both `.js` and `.ts` migration files:
+
+```bash
+# This will run both JS and TS migrations in the correct order
+npx ibmi-migrations migrate:latest --knexfile knexfile.ts
+```
+
+### Complete TypeScript Workflow Example
+
+```bash
+# 1. Create a TypeScript knexfile (knexfile.ts)
+# 2. Create a TypeScript migration
+npx ibmi-migrations migrate:make create_initial_schema -x ts --knexfile knexfile.ts
+
+# 3. Edit the migration file with your schema changes
+# 4. Run the migration
+npx ibmi-migrations migrate:latest --knexfile knexfile.ts
+
+# 5. Check status
+npx ibmi-migrations migrate:status --knexfile knexfile.ts
+```
+
+**Note:** The CLI uses dynamic imports to load TypeScript files directly, so no separate build step is required for your knexfile or migrations.
 
 ## CLI Features
 
@@ -207,8 +261,9 @@ npx ibmi-migrations migrate:make add_user_profile -x ts
 
 ## Configuration
 
-The migration runner accepts the same configuration as Knex migrations. Configure these in your `knexfile.js`:
+The migration runner accepts the same configuration as Knex migrations. Configure these in your `knexfile.js` or `knexfile.ts`:
 
+### JavaScript Configuration
 ```javascript
 // knexfile.js
 import { DB2Dialect } from "@bdkinc/knex-ibmi";
@@ -227,6 +282,43 @@ export default {
     }
   }
 };
+```
+
+### TypeScript Configuration
+```typescript
+// knexfile.ts
+import { DB2Dialect } from "@bdkinc/knex-ibmi";
+import type { Knex } from "knex";
+
+interface KnexConfig {
+  [key: string]: Knex.Config;
+}
+
+const config: KnexConfig = {
+  development: {
+    client: DB2Dialect,
+    connection: {
+      host: "your-ibm-i-host",
+      database: "*LOCAL",
+      user: "your-username",
+      password: "your-password",
+      driver: "IBM i Access ODBC Driver",
+      connectionStringParams: {
+        ALLOWPROCCALLS: 1,
+        CMT: 0,
+        DBQ: "MYLIB"
+      }
+    },
+    migrations: {
+      directory: "./migrations",
+      tableName: "KNEX_MIGRATIONS",
+      schemaName: "MYSCHEMA",
+      extension: "ts"                // Default extension for new migrations
+    }
+  }
+};
+
+export default config;
 ```
 
 **Configuration Options:**
