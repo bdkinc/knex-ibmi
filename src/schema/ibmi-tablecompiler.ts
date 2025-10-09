@@ -6,15 +6,21 @@ class IBMiTableCompiler extends TableCompiler {
   [key: string]: any;
 
   createQuery(columns: { sql: any[] }, ifNot: any, like: any) {
-    let createStatement = ifNot
-      ? `if object_id('${this.tableName()}', 'U') is null `
-      : "";
+    // Note: IBM i DB2 does not support IF NOT EXISTS syntax directly
+    // The ifNot parameter should be handled by checking hasTable first
+    if (ifNot && this.client?.logger?.warn) {
+      this.client.logger.warn(
+        'IBM i DB2: IF NOT EXISTS is not natively supported. Use hasTable() check instead.'
+      );
+    }
+
+    let createStatement = "";
 
     if (like) {
-      // This query copy only columns and not all indexes and keys like other databases.
-      createStatement += `select * into ${this.tableName()} from ${this.tableNameLike()} WHERE 0=1`;
+      // IBM i DB2 syntax for creating table from existing structure
+      createStatement = `create table ${this.tableName()} as (select * from ${this.tableNameLike()}) with no data`;
     } else {
-      createStatement +=
+      createStatement =
         "create table " +
         this.tableName() +
         (this._formatting ? " (\n    " : " (") +

@@ -120,11 +120,16 @@ var ibmi_compiler_default = IBMiSchemaCompiler;
 var import_tablecompiler = __toESM(require("knex/lib/schema/tablecompiler.js"));
 var IBMiTableCompiler = class extends import_tablecompiler.default {
   createQuery(columns, ifNot, like) {
-    let createStatement = ifNot ? `if object_id('${this.tableName()}', 'U') is null ` : "";
+    if (ifNot && this.client?.logger?.warn) {
+      this.client.logger.warn(
+        "IBM i DB2: IF NOT EXISTS is not natively supported. Use hasTable() check instead."
+      );
+    }
+    let createStatement = "";
     if (like) {
-      createStatement += `select * into ${this.tableName()} from ${this.tableNameLike()} WHERE 0=1`;
+      createStatement = `create table ${this.tableName()} as (select * from ${this.tableNameLike()}) with no data`;
     } else {
-      createStatement += "create table " + this.tableName() + (this._formatting ? " (\n    " : " (") + columns.sql.join(this._formatting ? ",\n    " : ", ") + this._addChecks() + ")";
+      createStatement = "create table " + this.tableName() + (this._formatting ? " (\n    " : " (") + columns.sql.join(this._formatting ? ",\n    " : ", ") + this._addChecks() + ")";
     }
     this.pushQuery(createStatement);
     if (this.single.comment) {
@@ -221,9 +226,12 @@ var IBMiColumnCompiler = class extends import_columncompiler.default {
     return "decimal(10, 2)";
   }
   // IBM i DB2 timestamp
+  // Note: IBM i DB2 does not support TIMESTAMP WITH TIME ZONE
   timestamp(options) {
-    if (options?.useTz) {
-      return "timestamp with time zone";
+    if (options?.useTz && this.client?.logger?.warn) {
+      this.client.logger.warn(
+        "IBM i DB2 does not support TIMESTAMP WITH TIME ZONE. Using plain TIMESTAMP instead."
+      );
     }
     return "timestamp";
   }
@@ -238,11 +246,13 @@ var IBMiColumnCompiler = class extends import_columncompiler.default {
     return "time";
   }
   // JSON support (IBM i 7.3+)
+  // Note: CHECK constraints with column references are not supported in this context
+  // Users should add validation constraints separately if needed
   json() {
-    return "clob(16M) check (json_valid(json_column))";
+    return "clob(16M)";
   }
   jsonb() {
-    return "clob(16M) check (json_valid(jsonb_column))";
+    return "clob(16M)";
   }
   // UUID support using CHAR(36)
   uuid() {
@@ -313,8 +323,12 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
   }
   // Override select method to add IBM i optimization hints
   select() {
-    const originalResult = super.select.call(this);
-    return originalResult;
+    let sql = super.select.call(this);
+    const readUncommitted = this.client?.config?.ibmi?.readUncommitted === true;
+    if (readUncommitted && typeof sql === "string") {
+      sql = sql + " WITH UR";
+    }
+    return sql;
   }
   formatTimestampLocal(date) {
     const pad = (n) => String(n).padStart(2, "0");
@@ -348,12 +362,15 @@ var IBMiQueryCompiler = class extends import_querycompiler.default {
     const standardInsert = super.insert();
     const insertSql = typeof standardInsert === "object" && standardInsert.sql ? standardInsert.sql : standardInsert;
     const multiRow = isArrayInsert && !forceSingleRow;
+    if (multiRow && !returning) {
+      return { sql: insertSql, returning: void 0 };
+    }
     if (multiRow && returning === "*") {
       if (this.client?.printWarn) {
         this.client.printWarn("multi-row insert with returning * may be large");
       }
     }
-    const selectColumns = returning ? this.formatter.columnize(returning) : multiRow ? "*" : "IDENTITY_VAL_LOCAL()";
+    const selectColumns = returning ? this.formatter.columnize(returning) : "IDENTITY_VAL_LOCAL()";
     const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
     if (multiRowStrategy === "sequential" && isArrayInsert) {
       const first = originalValues[0];
@@ -608,7 +625,7 @@ var IBMiMigrationRunner = class {
         console.log(`\u{1F4DD} Creating migration table: ${tableName}`);
         await this.knex.schema.createTable(tableName, (table) => {
           table.increments("id").primary();
-          table.string("name");
+          table.string("name").unique();
           table.integer("batch");
           table.timestamp("migration_time");
         });
@@ -776,9 +793,51 @@ function createIBMiMigrationRunner(knex2, config) {
 }
 
 // src/index.ts
+var StatementCache = class {
+  constructor(maxSize = 100) {
+    __publicField(this, "cache", /* @__PURE__ */ new Map());
+    __publicField(this, "maxSize");
+    this.maxSize = maxSize;
+  }
+  get(sql) {
+    const stmt = this.cache.get(sql);
+    if (stmt) {
+      this.cache.delete(sql);
+      this.cache.set(sql, stmt);
+    }
+    return stmt;
+  }
+  set(sql, stmt) {
+    if (this.cache.size >= this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      const oldStmt = this.cache.get(firstKey);
+      this.cache.delete(firstKey);
+      if (oldStmt && typeof oldStmt.close === "function") {
+        oldStmt.close().catch(() => {
+        });
+      }
+    }
+    this.cache.set(sql, stmt);
+  }
+  async clear() {
+    const statements = Array.from(this.cache.values());
+    this.cache.clear();
+    await Promise.all(
+      statements.map(
+        (stmt) => stmt && typeof stmt.close === "function" ? stmt.close().catch(() => {
+        }) : Promise.resolve()
+      )
+    );
+  }
+  size() {
+    return this.cache.size;
+  }
+};
 var DB2Client = class extends import_knex.default.Client {
   constructor(config) {
     super(config);
+    // Per-connection statement cache (WeakMap so it's GC'd with connections)
+    __publicField(this, "statementCaches", /* @__PURE__ */ new WeakMap());
     this.driverName = "odbc";
     if (this.dialect && !this.config.client) {
       this.printWarn(
@@ -851,44 +910,45 @@ var DB2Client = class extends import_knex.default.Client {
     this.printDebug("acquiring raw connection");
     const connectionConfig = this.config.connection;
     if (!connectionConfig) {
-      return this.printError("There is no connection config defined");
+      throw new Error("There is no connection config defined");
     }
     this.printDebug(
       "connection config: " + this._getConnectionString(connectionConfig)
     );
-    let connection;
-    if (this.config?.pool) {
-      const poolConfig = {
-        connectionString: this._getConnectionString(connectionConfig),
-        connectionTimeout: this.config?.acquireConnectionTimeout || 6e4,
-        initialSize: this.config?.pool?.min || 2,
-        maxSize: this.config?.pool?.max || 10,
-        reuseConnection: true
-      };
-      const pool = await this.driver.pool(poolConfig);
-      connection = await pool.connect();
-    } else {
-      connection = await this.driver.connect(
-        this._getConnectionString(connectionConfig)
-      );
-    }
+    const connection = await this.driver.connect(
+      this._getConnectionString(connectionConfig)
+    );
     return connection;
   }
   // Used to explicitly close a connection, called internally by the pool manager
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection) {
     this.printDebug("destroy connection");
+    const cache = this.statementCaches.get(connection);
+    if (cache) {
+      await cache.clear();
+      this.statementCaches.delete(connection);
+    }
     return await connection.close();
   }
   _getConnectionString(connectionConfig) {
-    const connectionStringParams = connectionConfig.connectionStringParams || {};
+    const defaults = {
+      BLOCKFETCH: 1,
+      // Enable block fetch for better performance
+      TRUEAUTOCOMMIT: 0
+      // Use proper transaction handling
+    };
+    const connectionStringParams = {
+      ...defaults,
+      ...connectionConfig.connectionStringParams || {}
+    };
     const connectionStringExtension = Object.keys(
       connectionStringParams
     ).reduce((result, key) => {
       const value = connectionStringParams[key];
       return `${result}${key}=${value};`;
     }, "");
-    return `DRIVER=${connectionConfig.driver};SYSTEM=${connectionConfig.host};HOSTNAME=${connectionConfig.host};PORT=${connectionConfig.port};DATABASE=${connectionConfig.database};UID=${connectionConfig.user};PWD=${connectionConfig.password};` + connectionStringExtension;
+    return `DRIVER=${connectionConfig.driver};SYSTEM=${connectionConfig.host};PORT=${connectionConfig.port || 8471};DATABASE=${connectionConfig.database};UID=${connectionConfig.user};PWD=${connectionConfig.password};` + connectionStringExtension;
   }
   // Runs the query on the specified connection, providing the bindings
   async _query(connection, obj) {
@@ -909,7 +969,9 @@ var DB2Client = class extends import_knex.default.Client {
         `Executing ${method} query: ${queryObject.sql.substring(0, 200)}...`
       );
       if (queryObject.bindings?.length) {
-        this.printDebug(`Bindings: ${JSON.stringify(queryObject.bindings)}`);
+        this.printDebug(
+          `Bindings: ${this.safeStringify(queryObject.bindings)}`
+        );
       }
     }
     try {
@@ -1086,9 +1148,30 @@ var DB2Client = class extends import_knex.default.Client {
   }
   async executeStatementQuery(connection, obj) {
     let statement;
+    let usedCache = false;
+    const cacheEnabled = this.config?.ibmi?.preparedStatementCache === true;
     try {
-      statement = await connection.createStatement();
-      await statement.prepare(obj.sql);
+      if (cacheEnabled) {
+        let cache = this.statementCaches.get(connection);
+        if (!cache) {
+          const cacheSize = this.config?.ibmi?.preparedStatementCacheSize || 100;
+          cache = new StatementCache(cacheSize);
+          this.statementCaches.set(connection, cache);
+        }
+        statement = cache.get(obj.sql);
+        if (statement) {
+          usedCache = true;
+          this.printDebug(`Using cached statement for: ${obj.sql.substring(0, 50)}...`);
+        } else {
+          statement = await connection.createStatement();
+          await statement.prepare(obj.sql);
+          cache.set(obj.sql, statement);
+          this.printDebug(`Cached new statement (cache size: ${cache.size()})`);
+        }
+      } else {
+        statement = await connection.createStatement();
+        await statement.prepare(obj.sql);
+      }
       if (obj.bindings) {
         await statement.bind(obj.bindings);
       }
@@ -1113,7 +1196,7 @@ var DB2Client = class extends import_knex.default.Client {
       this.printError(this.safeStringify(err));
       throw err;
     } finally {
-      if (statement && typeof statement.close === "function") {
+      if (!usedCache && statement && typeof statement.close === "function") {
         try {
           await statement.close();
         } catch (closeErr) {
@@ -1222,7 +1305,7 @@ var DB2Client = class extends import_knex.default.Client {
             isClosed = true;
             cursor.close((closeError) => {
               if (closeError) {
-                parentThis.printError(JSON.stringify(closeError, null, 2));
+                parentThis.printError(parentThis.safeStringify(closeError, 2));
               }
               if (result) {
                 this.push(result);
@@ -1295,11 +1378,11 @@ var DB2Client = class extends import_knex.default.Client {
   }
   validateResponse(obj) {
     if (!obj.response) {
-      this.printDebug("response undefined" + JSON.stringify(obj));
+      this.printDebug("response undefined " + this.safeStringify(obj));
       return null;
     }
     if (!obj.response.rows) {
-      this.printError("rows undefined" + JSON.stringify(obj));
+      this.printError("rows undefined " + this.safeStringify(obj));
       return null;
     }
     return null;
@@ -1310,23 +1393,24 @@ var DB2Client = class extends import_knex.default.Client {
       sql: queryObject.sql ? queryObject.sql.substring(0, 100) + "..." : "unknown",
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     };
+    const contextStr = this.safeStringify(context);
     if (this.isConnectionError(error)) {
       return new Error(
-        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${contextStr}`
       );
     }
     if (this.isTimeoutError(error)) {
       return new Error(
-        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${contextStr}`
       );
     }
     if (this.isSQLError(error)) {
       return new Error(
-        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${contextStr}`
       );
     }
     return new Error(
-      `IBM i DB2 error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      `IBM i DB2 error during ${method}: ${error.message} | Context: ${contextStr}`
     );
   }
   shouldRetryQuery(queryObject, method) {
@@ -1348,15 +1432,44 @@ var DB2Client = class extends import_knex.default.Client {
       return queryObject;
     }
   }
+  /**
+   * Extract SQLSTATE from ODBC error if available
+   */
+  getSQLState(error) {
+    if (error?.odbcErrors && Array.isArray(error.odbcErrors)) {
+      for (const odbcErr of error.odbcErrors) {
+        const state = odbcErr?.state || odbcErr?.SQLSTATE;
+        if (state) return String(state).toUpperCase();
+      }
+    }
+    return null;
+  }
   isConnectionError(error) {
+    const sqlState = this.getSQLState(error);
+    if (sqlState) {
+      return sqlState.startsWith("08") || // 08001, 08003, 08007, 08S01, etc.
+      sqlState === "40003";
+    }
     const errorMessage = (error.message || error.toString || error).toLowerCase();
     return errorMessage.includes("connection") && (errorMessage.includes("closed") || errorMessage.includes("invalid") || errorMessage.includes("terminated") || errorMessage.includes("not connected"));
   }
   isTimeoutError(error) {
+    const sqlState = this.getSQLState(error);
+    if (sqlState) {
+      return sqlState === "HYT00" || // Timeout expired
+      sqlState === "HYT01";
+    }
     const errorMessage = (error.message || error.toString || error).toLowerCase();
     return errorMessage.includes("timeout") || errorMessage.includes("timed out");
   }
   isSQLError(error) {
+    const sqlState = this.getSQLState(error);
+    if (sqlState) {
+      return sqlState.startsWith("42") || // Syntax error or access violation
+      sqlState.startsWith("22") || // Data exception
+      sqlState.startsWith("23") || // Integrity constraint violation
+      sqlState.startsWith("21");
+    }
     const errorMessage = (error.message || error.toString || error).toLowerCase();
     return errorMessage.includes("sql") || errorMessage.includes("syntax") || errorMessage.includes("table") || errorMessage.includes("column");
   }

@@ -43,6 +43,7 @@ declare enum SqlMethod {
     COUNTER = "counter"
 }
 declare class DB2Client extends knex.Client {
+    private statementCaches;
     constructor(config: Knex.Config<DB2Config>);
     private safeStringify;
     _driver(): typeof odbc;
@@ -50,7 +51,7 @@ declare class DB2Client extends knex.Client {
     printDebug(message: string): void;
     printError(message: string): void;
     printWarn(message: string): void;
-    acquireRawConnection(): Promise<void | odbc.Connection>;
+    acquireRawConnection(): Promise<any>;
     destroyRawConnection(connection: any): Promise<any>;
     _getConnectionString(connectionConfig: DB2ConnectionConfig): string;
     _query(connection: Connection, obj: any): Promise<any>;
@@ -93,6 +94,10 @@ declare class DB2Client extends knex.Client {
     private wrapError;
     private shouldRetryQuery;
     private retryQuery;
+    /**
+     * Extract SQLSTATE from ODBC error if available
+     */
+    private getSQLState;
     private isConnectionError;
     private isTimeoutError;
     private isSQLError;
@@ -149,6 +154,9 @@ interface DB2Config extends Knex.Config {
     ibmi?: {
         multiRowInsert?: "auto" | "sequential" | "disabled";
         sequentialInsertTransactional?: boolean;
+        preparedStatementCache?: boolean;
+        preparedStatementCacheSize?: number;
+        readUncommitted?: boolean;
     };
 }
 declare const DB2Dialect: typeof DB2Client;

@@ -396,10 +396,48 @@ Native `RETURNING` is not broadly supported over ODBC on IBM i. The dialect prov
 interface IbmiDialectConfig {
   multiRowInsert?: 'auto' | 'sequential' | 'disabled';
   sequentialInsertTransactional?: boolean; // if true, wraps sequential loop in BEGIN/COMMIT
+  preparedStatementCache?: boolean; // Enable per-connection statement caching (default: false)
+  preparedStatementCacheSize?: number; // Max cached statements per connection (default: 100)
+  readUncommitted?: boolean; // Append WITH UR to SELECT queries (default: false)
 }
 ```
 
 Attach under the root knex config as `ibmi`.
+
+### Performance Tuning
+
+#### Prepared Statement Caching (v0.5.0+)
+
+Enable optional prepared statement caching to reduce parse overhead for repeated queries:
+
+```ts
+const db = knex({
+  client: DB2Dialect,
+  connection: { /* ... */ },
+  ibmi: {
+    preparedStatementCache: true,        // Enable caching
+    preparedStatementCacheSize: 100,     // Max statements per connection
+  }
+});
+```
+
+When enabled, the dialect maintains a per-connection LRU cache of prepared statements. Statements are automatically closed when evicted or when the connection is destroyed.
+
+#### Read Uncommitted Isolation (v0.5.0+)
+
+For read-heavy workloads, enable uncommitted read isolation to improve concurrency:
+
+```ts
+const db = knex({
+  client: DB2Dialect,
+  connection: { /* ... */ },
+  ibmi: {
+    readUncommitted: true  // Appends WITH UR to all SELECT queries
+  }
+});
+```
+
+This appends `WITH UR` to all SELECT queries, allowing reads without waiting for locks. Only use this if your application can tolerate reading uncommitted data.
 
 ### Transactional Sequential Inserts
 

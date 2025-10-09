@@ -34,7 +34,61 @@ enum SqlMethod {
   COUNTER = "counter",
 }
 
+// Simple LRU cache for prepared statements
+class StatementCache {
+  private cache = new Map<string, any>();
+  private maxSize: number;
+
+  constructor(maxSize: number = 100) {
+    this.maxSize = maxSize;
+  }
+
+  get(sql: string): any | undefined {
+    const stmt = this.cache.get(sql);
+    if (stmt) {
+      // Move to end (most recently used)
+      this.cache.delete(sql);
+      this.cache.set(sql, stmt);
+    }
+    return stmt;
+  }
+
+  set(sql: string, stmt: any): void {
+    // Remove oldest if at capacity
+    if (this.cache.size >= this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      const oldStmt = this.cache.get(firstKey);
+      this.cache.delete(firstKey);
+      // Close the evicted statement
+      if (oldStmt && typeof oldStmt.close === 'function') {
+        oldStmt.close().catch(() => {});
+      }
+    }
+    this.cache.set(sql, stmt);
+  }
+
+  async clear(): Promise<void> {
+    const statements = Array.from(this.cache.values());
+    this.cache.clear();
+    // Close all cached statements
+    await Promise.all(
+      statements.map((stmt) =>
+        stmt && typeof stmt.close === 'function'
+          ? stmt.close().catch(() => {})
+          : Promise.resolve()
+      )
+    );
+  }
+
+  size(): number {
+    return this.cache.size;
+  }
+}
+
 class DB2Client extends knex.Client {
+  // Per-connection statement cache (WeakMap so it's GC'd with connections)
+  private statementCaches = new WeakMap<Connection, StatementCache>();
+
   constructor(config: Knex.Config<DB2Config>) {
     super(config);
     this.driverName = "odbc";
@@ -134,30 +188,18 @@ class DB2Client extends knex.Client {
     const connectionConfig = this.config.connection as DB2ConnectionConfig;
 
     if (!connectionConfig) {
-      return this.printError("There is no connection config defined");
+      throw new Error("There is no connection config defined");
     }
 
     this.printDebug(
       "connection config: " + this._getConnectionString(connectionConfig)
     );
 
-    let connection: Connection;
-
-    if (this.config?.pool) {
-      const poolConfig = {
-        connectionString: this._getConnectionString(connectionConfig),
-        connectionTimeout: this.config?.acquireConnectionTimeout || 60000,
-        initialSize: this.config?.pool?.min || 2,
-        maxSize: this.config?.pool?.max || 10,
-        reuseConnection: true,
-      };
-      const pool = await this.driver.pool(poolConfig);
-      connection = await pool.connect();
-    } else {
-      connection = await this.driver.connect(
-        this._getConnectionString(connectionConfig)
-      );
-    }
+    // Use simple ODBC connection - Knex manages the pooling
+    // This fixes the double-pooling bug where a new ODBC pool was created per connection
+    const connection = await this.driver.connect(
+      this._getConnectionString(connectionConfig)
+    );
 
     return connection;
   }
@@ -166,12 +208,29 @@ class DB2Client extends knex.Client {
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection: any) {
     this.printDebug("destroy connection");
+    
+    // Clean up statement cache if it exists
+    const cache = this.statementCaches.get(connection);
+    if (cache) {
+      await cache.clear();
+      this.statementCaches.delete(connection);
+    }
+    
     return await connection.close();
   }
 
   _getConnectionString(connectionConfig: DB2ConnectionConfig) {
-    const connectionStringParams =
-      connectionConfig.connectionStringParams || {};
+    // Apply performance defaults if not explicitly set
+    const defaults: DB2ConnectionParams = {
+      BLOCKFETCH: 1, // Enable block fetch for better performance
+      TRUEAUTOCOMMIT: 0, // Use proper transaction handling
+    };
+
+    // Merge defaults with user-provided params (user params take precedence)
+    const connectionStringParams = {
+      ...defaults,
+      ...(connectionConfig.connectionStringParams || {}),
+    };
 
     const connectionStringExtension = Object.keys(
       connectionStringParams
@@ -183,8 +242,7 @@ class DB2Client extends knex.Client {
     return (
       `DRIVER=${connectionConfig.driver};` +
       `SYSTEM=${connectionConfig.host};` +
-      `HOSTNAME=${connectionConfig.host};` +
-      `PORT=${connectionConfig.port};` +
+      `PORT=${connectionConfig.port || 8471};` +
       `DATABASE=${connectionConfig.database};` +
       `UID=${connectionConfig.user};` +
       `PWD=${connectionConfig.password};` +
@@ -224,7 +282,9 @@ class DB2Client extends knex.Client {
         `Executing ${method} query: ${queryObject.sql.substring(0, 200)}...`
       );
       if (queryObject.bindings?.length) {
-        this.printDebug(`Bindings: ${JSON.stringify(queryObject.bindings)}`);
+        this.printDebug(
+          `Bindings: ${this.safeStringify(queryObject.bindings)}`
+        );
       }
     }
 
@@ -473,9 +533,35 @@ class DB2Client extends knex.Client {
     obj: any
   ): Promise<void> {
     let statement: any;
+    let usedCache = false;
+    const cacheEnabled = (this.config as any)?.ibmi?.preparedStatementCache === true;
+    
     try {
-      statement = await connection.createStatement();
-      await statement.prepare(obj.sql);
+      // Try to use cached statement if enabled
+      if (cacheEnabled) {
+        let cache = this.statementCaches.get(connection);
+        if (!cache) {
+          const cacheSize = (this.config as any)?.ibmi?.preparedStatementCacheSize || 100;
+          cache = new StatementCache(cacheSize);
+          this.statementCaches.set(connection, cache);
+        }
+        
+        statement = cache.get(obj.sql);
+        if (statement) {
+          usedCache = true;
+          this.printDebug(`Using cached statement for: ${obj.sql.substring(0, 50)}...`);
+        } else {
+          // Create and cache new statement
+          statement = await connection.createStatement();
+          await statement.prepare(obj.sql);
+          cache.set(obj.sql, statement);
+          this.printDebug(`Cached new statement (cache size: ${cache.size()})`);
+        }
+      } else {
+        // No caching - create statement normally
+        statement = await connection.createStatement();
+        await statement.prepare(obj.sql);
+      }
 
       if (obj.bindings) {
         await statement.bind(obj.bindings);
@@ -521,8 +607,8 @@ class DB2Client extends knex.Client {
       this.printError(this.safeStringify(err));
       throw err;
     } finally {
-      // Ensure statement is closed to avoid resource leaks/hangs
-      if (statement && typeof statement.close === "function") {
+      // Only close statement if it's not cached
+      if (!usedCache && statement && typeof statement.close === "function") {
         try {
           await statement.close();
         } catch (closeErr) {
@@ -671,7 +757,7 @@ class DB2Client extends knex.Client {
             isClosed = true;
             cursor.close((closeError: unknown) => {
               if (closeError) {
-                parentThis.printError(JSON.stringify(closeError, null, 2));
+                parentThis.printError(parentThis.safeStringify(closeError, 2));
               }
               if (result) {
                 this.push(result);
@@ -766,7 +852,7 @@ class DB2Client extends knex.Client {
 
   private validateResponse(obj: QueryObject): any {
     if (!obj.response) {
-      this.printDebug("response undefined" + JSON.stringify(obj));
+      this.printDebug("response undefined " + this.safeStringify(obj));
       return null;
     }
 
@@ -774,7 +860,7 @@ class DB2Client extends knex.Client {
     // Do not short-circuit here; allow processSqlMethod to normalize the return value.
 
     if (!obj.response.rows) {
-      this.printError("rows undefined" + JSON.stringify(obj));
+      this.printError("rows undefined " + this.safeStringify(obj));
       return null;
     }
 
@@ -790,27 +876,29 @@ class DB2Client extends knex.Client {
       timestamp: new Date().toISOString(),
     };
 
+    const contextStr = this.safeStringify(context);
+
     if (this.isConnectionError(error)) {
       return new Error(
-        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${contextStr}`
       );
     }
 
     if (this.isTimeoutError(error)) {
       return new Error(
-        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${contextStr}`
       );
     }
 
     if (this.isSQLError(error)) {
       return new Error(
-        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${contextStr}`
       );
     }
 
     // Generic error with context
     return new Error(
-      `IBM i DB2 error during ${method}: ${error.message} | Context: ${JSON.stringify(context)}`
+      `IBM i DB2 error during ${method}: ${error.message} | Context: ${contextStr}`
     );
   }
 
@@ -844,7 +932,33 @@ class DB2Client extends knex.Client {
     }
   }
 
+  /**
+   * Extract SQLSTATE from ODBC error if available
+   */
+  private getSQLState(error: any): string | null {
+    // Check for ODBC error format with state property
+    if (error?.odbcErrors && Array.isArray(error.odbcErrors)) {
+      for (const odbcErr of error.odbcErrors) {
+        const state = odbcErr?.state || odbcErr?.SQLSTATE;
+        if (state) return String(state).toUpperCase();
+      }
+    }
+    return null;
+  }
+
   private isConnectionError(error: any): boolean {
+    const sqlState = this.getSQLState(error);
+    
+    // ODBC SQLSTATE codes for connection errors
+    // 08xxx = Connection exception
+    if (sqlState) {
+      return (
+        sqlState.startsWith('08') ||  // 08001, 08003, 08007, 08S01, etc.
+        sqlState === '40003'          // Transaction rollback due to connection
+      );
+    }
+
+    // Fallback to message parsing
     const errorMessage = (
       error.message ||
       error.toString ||
@@ -860,6 +974,17 @@ class DB2Client extends knex.Client {
   }
 
   private isTimeoutError(error: any): boolean {
+    const sqlState = this.getSQLState(error);
+    
+    // ODBC SQLSTATE codes for timeout errors
+    if (sqlState) {
+      return (
+        sqlState === 'HYT00' ||  // Timeout expired
+        sqlState === 'HYT01'     // Connection timeout expired
+      );
+    }
+
+    // Fallback to message parsing
     const errorMessage = (
       error.message ||
       error.toString ||
@@ -871,6 +996,19 @@ class DB2Client extends knex.Client {
   }
 
   private isSQLError(error: any): boolean {
+    const sqlState = this.getSQLState(error);
+    
+    // ODBC SQLSTATE codes for SQL errors
+    if (sqlState) {
+      return (
+        sqlState.startsWith('42') ||  // Syntax error or access violation
+        sqlState.startsWith('22') ||  // Data exception
+        sqlState.startsWith('23') ||  // Integrity constraint violation
+        sqlState.startsWith('21')     // Cardinality violation
+      );
+    }
+
+    // Fallback to message parsing
     const errorMessage = (
       error.message ||
       error.toString ||
@@ -971,6 +1109,9 @@ export interface DB2Config extends Knex.Config {
   ibmi?: {
     multiRowInsert?: "auto" | "sequential" | "disabled";
     sequentialInsertTransactional?: boolean;
+    preparedStatementCache?: boolean; // Enable per-connection statement caching
+    preparedStatementCacheSize?: number; // Max cached statements per connection (default: 100)
+    readUncommitted?: boolean; // Append WITH UR to SELECT queries
   };
 }
 

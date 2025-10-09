@@ -59,9 +59,12 @@ class IBMiColumnCompiler extends ColumnCompiler {
   }
 
   // IBM i DB2 timestamp
+  // Note: IBM i DB2 does not support TIMESTAMP WITH TIME ZONE
   timestamp(options?: any) {
-    if (options?.useTz) {
-      return 'timestamp with time zone';
+    if (options?.useTz && this.client?.logger?.warn) {
+      this.client.logger.warn(
+        'IBM i DB2 does not support TIMESTAMP WITH TIME ZONE. Using plain TIMESTAMP instead.'
+      );
     }
     return 'timestamp';
   }
@@ -80,13 +83,15 @@ class IBMiColumnCompiler extends ColumnCompiler {
   }
 
   // JSON support (IBM i 7.3+)
+  // Note: CHECK constraints with column references are not supported in this context
+  // Users should add validation constraints separately if needed
   json() {
-    return 'clob(16M) check (json_valid(json_column))';
+    return 'clob(16M)';
   }
 
   jsonb() {
-    // IBM i doesn't have native JSONB, use CLOB with JSON validation
-    return 'clob(16M) check (json_valid(jsonb_column))';
+    // IBM i doesn't have native JSONB, use CLOB
+    return 'clob(16M)';
   }
 
   // UUID support using CHAR(36)

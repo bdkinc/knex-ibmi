@@ -1,3 +1,36 @@
+## 0.5.0 - [Date TBD]
+
+### 🚀 Performance Improvements
+- **CRITICAL FIX**: Fixed double-pooling bug that created a new ODBC pool on every connection acquisition, causing memory leaks and performance degradation. Now uses Knex-managed pooling with simple ODBC connections.
+- Optimized multi-row INSERTs: Plain INSERT statements (without FINAL TABLE) when RETURNING is not requested, significantly reducing network overhead for bulk inserts.
+- Added optional per-connection prepared statement caching with LRU eviction to reduce parse overhead for repeated queries.
+- Added smart connection string defaults: `BLOCKFETCH=1` and `TRUEAUTOCOMMIT=0` for better out-of-box performance.
+
+### 🐛 Bug Fixes
+- Fixed JSON/JSONB column types: Removed invalid CHECK constraints with hardcoded column names that caused DDL failures.
+- Fixed TIMESTAMP WITH TIME ZONE: IBM i doesn't support it; now emits plain TIMESTAMP with warning when `useTz` is requested.
+- Fixed CREATE TABLE ... LIKE syntax: Changed from SQL Server syntax to proper DB2 i syntax (`CREATE TABLE AS (...) WITH NO DATA`).
+- Improved error logging: Use `safeStringify` everywhere to prevent circular reference errors.
+- Enhanced error classification: Now uses ODBC SQLSTATE codes (08xxx for connection, HYT00/HYT01 for timeout, 42xxx for SQL errors) instead of just string matching.
+
+### ✨ New Features
+- Added `ibmi.preparedStatementCache` config option to enable optional statement caching (default: false).
+- Added `ibmi.preparedStatementCacheSize` to control cache size per connection (default: 100).
+- Added `ibmi.readUncommitted` config option to append `WITH UR` to SELECT queries for better read concurrency (default: false).
+- Added UNIQUE constraint on migration table NAME column to prevent duplicate migrations in concurrent scenarios.
+
+### 📚 Documentation
+- New `AGENTS.md`: Comprehensive project context for AI assistants and developers.
+- New `CLAUDE.md`: AI-specific development guide with IBM i DB2 quirks and common patterns.
+- New `IMPROVEMENTS.md`: Detailed changelog of all performance and usability improvements.
+- Updated README with new configuration options and performance tuning guide.
+
+### ⚠️ Breaking Changes
+- Multi-row INSERTs without `.returning()` now return `rowCount` instead of an array of rows for better performance.
+  - **Migration**: If you need inserted values, explicitly use `.returning(['col1', 'col2'])`.
+
+---
+
 ## Unreleased - September 12th, 2025
 
 - **BREAKING CHANGE**: Migration configuration change required for IBM i DB2 compatibility.
