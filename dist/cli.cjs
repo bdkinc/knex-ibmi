@@ -63,7 +63,7 @@ var IBMiMigrationRunner = class {
         console.log(`\u{1F4DD} Creating migration table: ${tableName}`);
         await this.knex.schema.createTable(tableName, (table) => {
           table.increments("id").primary();
-          table.string("name");
+          table.string("name").unique();
           table.integer("batch");
           table.timestamp("migration_time");
         });

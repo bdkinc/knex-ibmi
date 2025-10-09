@@ -10,8 +10,15 @@ class IBMiQueryCompiler extends QueryCompiler {
 
   // Override select method to add IBM i optimization hints
   select() {
-    const originalResult = super.select.call(this);
-    return originalResult;
+    let sql = super.select.call(this);
+    
+    // Add WITH UR (uncommitted read) if configured
+    const readUncommitted = this.client?.config?.ibmi?.readUncommitted === true;
+    if (readUncommitted && typeof sql === 'string') {
+      sql = sql + ' WITH UR';
+    }
+    
+    return sql;
   }
 
   private formatTimestampLocal(date: Date): string {
@@ -66,22 +73,26 @@ class IBMiQueryCompiler extends QueryCompiler {
         ? standardInsert.sql
         : standardInsert;
 
-    // For IBM i, wrap INSERT with FINAL TABLE and return IDENTITY_VAL_LOCAL()
-    // If returning specified by user, select those columns from FINAL TABLE.
-    // If multi-row and no returning specified, prefer selecting * so calling code could derive identities (lenient fallback);
-    // otherwise keep legacy IDENTITY_VAL_LOCAL() (last identity) for single-row.
+    // For IBM i, wrap INSERT with FINAL TABLE only when RETURNING is requested
+    // Multi-row inserts without RETURNING should use plain INSERT for performance
     const multiRow = isArrayInsert && !forceSingleRow;
+    
+    // If multi-row insert without returning, use plain INSERT (return rowCount only)
+    if (multiRow && !returning) {
+      return { sql: insertSql, returning: undefined };
+    }
+    
+    // Warn about potentially large result sets
     if (multiRow && returning === "*") {
-      // Ambiguous scenario; '*' may be large. Keep for lenient fallback.
       if (this.client?.printWarn) {
         this.client.printWarn("multi-row insert with returning * may be large");
       }
     }
+    
+    // Use FINAL TABLE for single-row or when returning is specified
     const selectColumns = returning
       ? this.formatter.columnize(returning)
-      : multiRow
-        ? "*"
-        : "IDENTITY_VAL_LOCAL()";
+      : "IDENTITY_VAL_LOCAL()";
     const sql = `select ${selectColumns} from FINAL TABLE(${insertSql})`;
 
     // Add metadata for sequential strategy so runtime can execute remaining rows
