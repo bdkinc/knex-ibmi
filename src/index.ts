@@ -60,7 +60,7 @@ class StatementCache {
       const oldStmt = this.cache.get(firstKey);
       this.cache.delete(firstKey);
       // Close the evicted statement
-      if (oldStmt && typeof oldStmt.close === 'function') {
+      if (oldStmt && typeof oldStmt.close === "function") {
         oldStmt.close().catch(() => {});
       }
     }
@@ -73,7 +73,7 @@ class StatementCache {
     // Close all cached statements
     await Promise.all(
       statements.map((stmt) =>
-        stmt && typeof stmt.close === 'function'
+        stmt && typeof stmt.close === "function"
           ? stmt.close().catch(() => {})
           : Promise.resolve()
       )
@@ -208,14 +208,14 @@ class DB2Client extends knex.Client {
   // when a connection times out or the pool is shutdown.
   async destroyRawConnection(connection: any) {
     this.printDebug("destroy connection");
-    
+
     // Clean up statement cache if it exists
     const cache = this.statementCaches.get(connection);
     if (cache) {
       await cache.clear();
       this.statementCaches.delete(connection);
     }
-    
+
     return await connection.close();
   }
 
@@ -534,22 +534,26 @@ class DB2Client extends knex.Client {
   ): Promise<void> {
     let statement: any;
     let usedCache = false;
-    const cacheEnabled = (this.config as any)?.ibmi?.preparedStatementCache === true;
-    
+    const cacheEnabled =
+      (this.config as any)?.ibmi?.preparedStatementCache === true;
+
     try {
       // Try to use cached statement if enabled
       if (cacheEnabled) {
         let cache = this.statementCaches.get(connection);
         if (!cache) {
-          const cacheSize = (this.config as any)?.ibmi?.preparedStatementCacheSize || 100;
+          const cacheSize =
+            (this.config as any)?.ibmi?.preparedStatementCacheSize || 100;
           cache = new StatementCache(cacheSize);
           this.statementCaches.set(connection, cache);
         }
-        
+
         statement = cache.get(obj.sql);
         if (statement) {
           usedCache = true;
-          this.printDebug(`Using cached statement for: ${obj.sql.substring(0, 50)}...`);
+          this.printDebug(
+            `Using cached statement for: ${obj.sql.substring(0, 50)}...`
+          );
         } else {
           // Create and cache new statement
           statement = await connection.createStatement();
@@ -948,13 +952,13 @@ class DB2Client extends knex.Client {
 
   private isConnectionError(error: any): boolean {
     const sqlState = this.getSQLState(error);
-    
+
     // ODBC SQLSTATE codes for connection errors
     // 08xxx = Connection exception
     if (sqlState) {
       return (
-        sqlState.startsWith('08') ||  // 08001, 08003, 08007, 08S01, etc.
-        sqlState === '40003'          // Transaction rollback due to connection
+        sqlState.startsWith("08") || // 08001, 08003, 08007, 08S01, etc.
+        sqlState === "40003" // Transaction rollback due to connection
       );
     }
 
@@ -975,12 +979,12 @@ class DB2Client extends knex.Client {
 
   private isTimeoutError(error: any): boolean {
     const sqlState = this.getSQLState(error);
-    
+
     // ODBC SQLSTATE codes for timeout errors
     if (sqlState) {
       return (
-        sqlState === 'HYT00' ||  // Timeout expired
-        sqlState === 'HYT01'     // Connection timeout expired
+        sqlState === "HYT00" || // Timeout expired
+        sqlState === "HYT01" // Connection timeout expired
       );
     }
 
@@ -997,14 +1001,14 @@ class DB2Client extends knex.Client {
 
   private isSQLError(error: any): boolean {
     const sqlState = this.getSQLState(error);
-    
+
     // ODBC SQLSTATE codes for SQL errors
     if (sqlState) {
       return (
-        sqlState.startsWith('42') ||  // Syntax error or access violation
-        sqlState.startsWith('22') ||  // Data exception
-        sqlState.startsWith('23') ||  // Integrity constraint violation
-        sqlState.startsWith('21')     // Cardinality violation
+        sqlState.startsWith("42") || // Syntax error or access violation
+        sqlState.startsWith("22") || // Data exception
+        sqlState.startsWith("23") || // Integrity constraint violation
+        sqlState.startsWith("21") // Cardinality violation
       );
     }
 
@@ -1054,13 +1058,22 @@ interface DB2PoolConfig {
 }
 
 interface DB2ConnectionParams {
-  CMT?: number;
-  CONNTYPE?: number;
+  // General Properties
+  DSN?: string;
+  SIGNON?: 0 | 1 | 2 | 3 | 4;
+  SSL?: 0 | 1;
+
+  // Server Properties
+  CMT?: 0 | 1 | 2 | 3 | 4;
+  CONNTYPE?: 0 | 1 | 2;
+  DATABASE?: string;
   DBQ?: string;
   MAXDECPREC?: 31 | 63;
   MAXDECSCALE?: number;
   MINDIVSCALE?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   NAM?: 0 | 1;
+
+  // Data Types Properties
   DFT?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
   DSP?: 0 | 1 | 2 | 3 | 4;
   DEC?: 0 | 1;
@@ -1071,25 +1084,130 @@ interface DB2ConnectionParams {
   TSP?: 0 | 1 | 2 | 3;
   TSFT?: 0 | 1;
   XMLCURIMPPARSE?: 0 | 1;
-  XMLDECLARATION?: 1 | 2 | 3 | 4;
-  ALLOWPROCCALLS?: 0 | 1;
-  XDYNAMIC?: 0 | 1;
+  XMLDECLARATION?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+  // Package Properties
   DFTPKGLIB?: string;
-  PKG?: 0 | 1 | 2;
+  PKG?: string;
+  XDYNAMIC?: 0 | 1;
+
+  // Performance Properties
   BLOCKFETCH?: 0 | 1;
+  BLOCKSIZE?: number;
   COMPRESSION?: 0 | 1;
   CONCURRENCY?: 0 | 1;
   CURSORSENSITIVITY?: 0 | 1 | 2;
-  EXTCOLINFO?:
-    | "SQL_DESC_AUTO_UNIQUE_VALUE"
-    | "SQL_DESC_BASE_COLUMN_NAME"
-    | "SQL_DESC_BASE_TABLE_NAME and SQL_DESC_TABLE_NAME"
-    | "SQL_DESC_LABEL"
-    | "SQL_DESC_SCHEMA_NAME"
-    | "SQL_DESC_SEARCHABLE"
-    | "SQL_DESC_UNNAMED"
-    | "SQL_DESC_UPDATABLE";
+  EXTCOLINFO?: 0 | 1;
+  LAZYCLOSE?: 0 | 1;
+  MAXFIELDLEN?: number;
+  PREFETCH?: 0 | 1;
+  QRYSTGLMT?: number | "*NOMAX";
+  QUERYOPTIMIZEGOAL?: 0 | 1 | 2;
+  QUERYTIMEOUT?: 0 | 1;
+
+  // Language Properties
+  LANGUAGEID?:
+    | "AFR"
+    | "ARA"
+    | "BEL"
+    | "BGR"
+    | "CAT"
+    | "CHS"
+    | "CHT"
+    | "CSY"
+    | "DAN"
+    | "DES"
+    | "DEU"
+    | "ELL"
+    | "ENA"
+    | "ENB"
+    | "ENG"
+    | "ENP"
+    | "ENU"
+    | "ESP"
+    | "EST"
+    | "FAR"
+    | "FIN"
+    | "FRA"
+    | "FRB"
+    | "FRC"
+    | "FRS"
+    | "GAE"
+    | "HEB"
+    | "HRV"
+    | "HUN"
+    | "ISL"
+    | "ITA"
+    | "ITS"
+    | "JPN"
+    | "KOR"
+    | "LAO"
+    | "LVA"
+    | "LTU"
+    | "MKD"
+    | "NLB"
+    | "NLD"
+    | "NON"
+    | "NOR"
+    | "PLK"
+    | "PTB"
+    | "PTG"
+    | "RMS"
+    | "ROM"
+    | "RUS"
+    | "SKY"
+    | "SLO"
+    | "SQI"
+    | "SRB"
+    | "SRL"
+    | "SVE"
+    | "THA"
+    | "TRK"
+    | "UKR"
+    | "URD"
+    | "VIE";
+  SORTTABLE?: string;
+  SORTTYPE?: 0 | 1 | 2 | 3;
+  SORTWEIGHT?: 0 | 1;
+
+  // Catalog Properties
+  CATALOGOPTIONS?: number;
+  LIBVIEW?: 0 | 1 | 2;
+  REMARKS?: 0 | 1;
+  SEARCHPATTERN?: 0 | 1;
+
+  // Conversion Properties
+  ALLOWUNSCHAR?: 0 | 1;
+  CCSID?: number;
+  GRAPHIC?: 0 | 1 | 2 | 3;
+  HEXPARSEROPT?: 0 | 1;
+  TRANSLATE?: 0 | 1;
+  TRIMCHAR?: 0 | 1;
+  UNICODESQL?: 0 | 1;
+  XLATEDLL?: string;
+  XLATEOPT?: number;
+
+  // Diagnostic Properties
+  QAQQINILIB?: string;
+  SQDIAGCODE?: string;
+  TRACE?: number;
+
+  // Other Properties
+  ALWAYSCALCLEN?: 0 | 1;
+  ALLOWPROCCALLS?: 0 | 1;
+  CONCURRENTACCESSRESOLUTION?: 0 | 1 | 2 | 3;
+  DB2SQLSTATES?: 0 | 1;
+  DATETIMETOCHAR?: number;
+  DBCSNoTruncError?: 0 | 1;
+  DEBUG?: number;
+  KEEPALIVE?: 0 | 1 | 2;
+  LOGINTIMEOUT?: number;
+  TIMEOUT?: number;
   TRUEAUTOCOMMIT?: 0 | 1;
+  NEWPWD?: string;
+  XALCS?: 0 | 1;
+  XALOCKTIMEOUT?: number;
+  XATXNTIMEOUT?: number;
 }
 
 interface DB2ConnectionConfig {
