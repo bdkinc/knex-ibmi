@@ -6,6 +6,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
 
 // src/index.ts
 import process from "process";
+import { Buffer as Buffer2 } from "buffer";
 import knex from "knex";
 import odbc from "odbc";
 
@@ -804,6 +805,7 @@ var DB2Client = class extends knex.Client {
     super(config);
     // Per-connection statement cache (WeakMap so it's GC'd with connections)
     __publicField(this, "statementCaches", /* @__PURE__ */ new WeakMap());
+    __publicField(this, "normalizeBigintToString");
     this.driverName = "odbc";
     if (this.dialect && !this.config.client) {
       this.printWarn(
@@ -829,6 +831,8 @@ var DB2Client = class extends knex.Client {
     if (config.useNullAsDefault) {
       this.valueForUndefined = null;
     }
+    const ibmiConfig = config?.ibmi;
+    this.normalizeBigintToString = ibmiConfig?.normalizeBigintToString !== false;
   }
   // Helper method to safely stringify objects that might have circular references
   safeStringify(obj, indent = 0) {
@@ -1109,7 +1113,8 @@ var DB2Client = class extends knex.Client {
       obj.bindings
     );
     if (rows) {
-      obj.response = { rows, rowCount: rows.length };
+      const normalizedRows = this.maybeNormalizeBigint(rows);
+      obj.response = { rows: normalizedRows, rowCount: normalizedRows.length };
     }
   }
   async executeStatementQuery(connection, obj) {
@@ -1127,7 +1132,9 @@ var DB2Client = class extends knex.Client {
         statement = cache.get(obj.sql);
         if (statement) {
           usedCache = true;
-          this.printDebug(`Using cached statement for: ${obj.sql.substring(0, 50)}...`);
+          this.printDebug(
+            `Using cached statement for: ${obj.sql.substring(0, 50)}...`
+          );
         } else {
           statement = await connection.createStatement();
           await statement.prepare(obj.sql);
@@ -1178,6 +1185,44 @@ var DB2Client = class extends knex.Client {
     const msg = String(error?.message || error || "").toLowerCase();
     return msg.includes("02000") || msg.includes("no data") || msg.includes("no rows") || msg.includes("0 rows");
   }
+  shouldNormalizeBigintValues() {
+    return this.normalizeBigintToString;
+  }
+  maybeNormalizeBigint(value) {
+    if (value === null || value === void 0) {
+      return value;
+    }
+    if (!this.shouldNormalizeBigintValues()) {
+      return value;
+    }
+    return this.normalizeBigintValue(value);
+  }
+  normalizeBigintValue(value, seen = /* @__PURE__ */ new WeakSet()) {
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        value[i] = this.normalizeBigintValue(value[i], seen);
+      }
+      return value;
+    }
+    if (value && typeof value === "object") {
+      if (value instanceof Date || Buffer2.isBuffer(value) || ArrayBuffer.isView(value)) {
+        return value;
+      }
+      const obj = value;
+      if (seen.has(obj)) {
+        return value;
+      }
+      seen.add(obj);
+      for (const key of Object.keys(obj)) {
+        obj[key] = this.normalizeBigintValue(obj[key], seen);
+      }
+      return value;
+    }
+    return value;
+  }
   /**
    * Format statement response from ODBC driver
    * Handles special case for IDENTITY_VAL_LOCAL() function
@@ -1185,16 +1230,18 @@ var DB2Client = class extends knex.Client {
   formatStatementResponse(result) {
     const isIdentityQuery = result.statement?.includes("IDENTITY_VAL_LOCAL()");
     if (isIdentityQuery && result.columns?.length > 0) {
+      const identityRows = result.map(
+        (row) => row[result.columns[0].name]
+      );
+      const normalizedIdentityRows = this.maybeNormalizeBigint(identityRows);
       return {
-        rows: result.map(
-          (row) => row[result.columns[0].name]
-        ),
+        rows: normalizedIdentityRows,
         rowCount: result.count
       };
     }
     const rowCount = typeof result?.count === "number" ? result.count : 0;
     return {
-      rows: result,
+      rows: this.maybeNormalizeBigint(result),
       rowCount
     };
   }
@@ -1266,7 +1313,7 @@ var DB2Client = class extends knex.Client {
             return;
           }
           if (!cursor.noData) {
-            this.push(result);
+            this.push(parentThis.maybeNormalizeBigint(result));
           } else {
             isClosed = true;
             cursor.close((closeError) => {
@@ -1274,7 +1321,7 @@ var DB2Client = class extends knex.Client {
                 parentThis.printError(parentThis.safeStringify(closeError, 2));
               }
               if (result) {
-                this.push(result);
+                this.push(parentThis.maybeNormalizeBigint(result));
               }
               this.push(null);
             });
@@ -1337,6 +1384,9 @@ var DB2Client = class extends knex.Client {
         }
         throw wrappedError;
       }
+    }
+    if (response) {
+      this.maybeNormalizeBigint(response.rows);
     }
     const validationResult = this.validateResponse(obj);
     if (validationResult !== null) return validationResult;
