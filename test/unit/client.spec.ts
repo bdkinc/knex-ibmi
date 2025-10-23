@@ -24,9 +24,9 @@ describe("IBMi Client", () => {
       };
       const expectedConnectionString =
         `DRIVER=${connectionConfig.driver};SYSTEM=${connectionConfig.host};` +
-        `HOSTNAME=${connectionConfig.host};` +
         `PORT=${connectionConfig.port};DATABASE=${connectionConfig.database};` +
-        `UID=${connectionConfig.user};PWD=${connectionConfig.password};`;
+        `UID=${connectionConfig.user};PWD=${connectionConfig.password};` +
+        `BLOCKFETCH=1;TRUEAUTOCOMMIT=0;`;
 
       const connectionString = client._getConnectionString(connectionConfig);
 
@@ -45,6 +45,53 @@ describe("IBMi Client", () => {
       const connectionString = client._getConnectionString(connectionConfig);
 
       expect(connectionString.endsWith("X=1;Y=20;")).to.be.true;
+    });
+  });
+
+  describe("Bigint normalization", () => {
+    it("normalizes bigint values to strings by default", () => {
+      const queryObject: any = {
+        sqlMethod: "select",
+        response: {
+          rows: [
+            {
+              id: 9007199254740995n,
+              nested: { value: 1n },
+              label: "example",
+            },
+          ],
+          rowCount: 1,
+        },
+      };
+
+      const result = client.processResponse(queryObject, {});
+
+      expect(result).to.deep.equal([
+        {
+          id: "9007199254740995",
+          nested: { value: "1" },
+          label: "example",
+        },
+      ]);
+    });
+
+    it("can disable bigint normalization via configuration", () => {
+      const customClient = new DB2Dialect({
+        client: "ibmi",
+        ibmi: { normalizeBigintToString: false },
+      });
+
+      const queryObject: any = {
+        sqlMethod: "select",
+        response: {
+          rows: [{ id: 42n }],
+          rowCount: 1,
+        },
+      };
+
+      const result = customClient.processResponse(queryObject, {});
+
+      expect(typeof result[0].id).to.equal("bigint");
     });
   });
 });

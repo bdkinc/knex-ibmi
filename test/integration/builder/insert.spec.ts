@@ -40,10 +40,10 @@ describe("Inserts", () => {
         { x: 3, y: 4 },
       ])
       .into("testtable");
-    // Expect * selection for multi-row lenient returning
+    // Auto strategy without returning uses plain INSERT for performance
     testSql(
       query,
-      "select * from FINAL TABLE(insert into testtable (x, y) values (1, 2), (3, 4))"
+      "insert into testtable (x, y) values (1, 2), (3, 4)"
     );
   });
 

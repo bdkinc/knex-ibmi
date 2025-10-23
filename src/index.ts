@@ -1,4 +1,5 @@
 import process from "node:process";
+import { Buffer } from "node:buffer";
 import knex, { Knex } from "knex";
 import odbc, { Connection } from "odbc";
 import SchemaCompiler from "./schema/ibmi-compiler";
@@ -88,6 +89,7 @@ class StatementCache {
 class DB2Client extends knex.Client {
   // Per-connection statement cache (WeakMap so it's GC'd with connections)
   private statementCaches = new WeakMap<Connection, StatementCache>();
+  private normalizeBigintToString: boolean;
 
   constructor(config: Knex.Config<DB2Config>) {
     super(config);
@@ -121,6 +123,9 @@ class DB2Client extends knex.Client {
     if (config.useNullAsDefault) {
       this.valueForUndefined = null;
     }
+
+    const ibmiConfig = (config as any)?.ibmi;
+    this.normalizeBigintToString = ibmiConfig?.normalizeBigintToString !== false;
   }
 
   // Helper method to safely stringify objects that might have circular references
@@ -524,7 +529,8 @@ class DB2Client extends knex.Client {
       obj.bindings
     );
     if (rows) {
-      obj.response = { rows, rowCount: rows.length };
+      const normalizedRows = this.maybeNormalizeBigint(rows);
+      obj.response = { rows: normalizedRows, rowCount: normalizedRows.length };
     }
   }
 
@@ -637,6 +643,64 @@ class DB2Client extends knex.Client {
     );
   }
 
+  private shouldNormalizeBigintValues(): boolean {
+    return this.normalizeBigintToString;
+  }
+
+  private maybeNormalizeBigint<T>(value: T): T {
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    if (!this.shouldNormalizeBigintValues()) {
+      return value;
+    }
+
+    return this.normalizeBigintValue(value);
+  }
+
+  private normalizeBigintValue(
+    value: any,
+    seen: WeakSet<object> = new WeakSet()
+  ): any {
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
+
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        value[i] = this.normalizeBigintValue(value[i], seen);
+      }
+      return value;
+    }
+
+    if (value && typeof value === "object") {
+      if (
+        value instanceof Date ||
+        Buffer.isBuffer(value) ||
+        ArrayBuffer.isView(value)
+      ) {
+        return value;
+      }
+
+      const obj = value as Record<string, any>;
+
+      if (seen.has(obj)) {
+        return value;
+      }
+
+      seen.add(obj);
+
+      for (const key of Object.keys(obj)) {
+        obj[key] = this.normalizeBigintValue(obj[key], seen);
+      }
+
+      return value;
+    }
+
+    return value;
+  }
+
   /**
    * Format statement response from ODBC driver
    * Handles special case for IDENTITY_VAL_LOCAL() function
@@ -648,10 +712,12 @@ class DB2Client extends knex.Client {
     const isIdentityQuery = result.statement?.includes("IDENTITY_VAL_LOCAL()");
 
     if (isIdentityQuery && result.columns?.length > 0) {
+      const identityRows = result.map(
+        (row: { [x: string]: any }) => row[result.columns[0].name]
+      );
+      const normalizedIdentityRows = this.maybeNormalizeBigint(identityRows);
       return {
-        rows: result.map(
-          (row: { [x: string]: any }) => row[result.columns[0].name]
-        ),
+        rows: normalizedIdentityRows,
         rowCount: result.count,
       };
     }
@@ -659,7 +725,7 @@ class DB2Client extends knex.Client {
     // Normalize result for DML (UPDATE/DELETE/INSERT) to surface rowCount consistently
     const rowCount = typeof result?.count === "number" ? result.count : 0;
     return {
-      rows: result,
+      rows: this.maybeNormalizeBigint(result),
       rowCount,
     };
   }
@@ -756,7 +822,7 @@ class DB2Client extends knex.Client {
           }
 
           if (!cursor.noData) {
-            this.push(result);
+            this.push(parentThis.maybeNormalizeBigint(result));
           } else {
             isClosed = true;
             cursor.close((closeError: unknown) => {
@@ -764,7 +830,7 @@ class DB2Client extends knex.Client {
                 parentThis.printError(parentThis.safeStringify(closeError, 2));
               }
               if (result) {
-                this.push(result);
+                this.push(parentThis.maybeNormalizeBigint(result));
               }
               this.push(null); // End the stream
             });
@@ -845,6 +911,10 @@ class DB2Client extends knex.Client {
         }
         throw wrappedError;
       }
+    }
+
+    if (response) {
+      this.maybeNormalizeBigint(response.rows);
     }
 
     // Only validate for standard SQL methods that expect rows structure
@@ -1230,6 +1300,7 @@ export interface DB2Config extends Knex.Config {
     preparedStatementCache?: boolean; // Enable per-connection statement caching
     preparedStatementCacheSize?: number; // Max cached statements per connection (default: 100)
     readUncommitted?: boolean; // Append WITH UR to SELECT queries
+    normalizeBigintToString?: boolean; // Default: true - converts bigint values to strings for JSON safety
   };
 }
 

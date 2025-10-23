@@ -44,6 +44,7 @@ declare enum SqlMethod {
 }
 declare class DB2Client extends knex.Client {
     private statementCaches;
+    private normalizeBigintToString;
     constructor(config: Knex.Config<DB2Config>);
     private safeStringify;
     _driver(): typeof odbc;
@@ -70,6 +71,9 @@ declare class DB2Client extends knex.Client {
     private executeSelectQuery;
     private executeStatementQuery;
     private isNoDataError;
+    private shouldNormalizeBigintValues;
+    private maybeNormalizeBigint;
+    private normalizeBigintValue;
     /**
      * Format statement response from ODBC driver
      * Handles special case for IDENTITY_VAL_LOCAL() function
@@ -201,6 +205,7 @@ interface DB2Config extends Knex.Config {
         preparedStatementCache?: boolean;
         preparedStatementCacheSize?: number;
         readUncommitted?: boolean;
+        normalizeBigintToString?: boolean;
     };
 }
 declare const DB2Dialect: typeof DB2Client;
