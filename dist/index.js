@@ -1161,7 +1161,9 @@ var DB2Client = class extends import_knex.default.Client {
         statement = cache.get(obj.sql);
         if (statement) {
           usedCache = true;
-          this.printDebug(`Using cached statement for: ${obj.sql.substring(0, 50)}...`);
+          this.printDebug(
+            `Using cached statement for: ${obj.sql.substring(0, 50)}...`
+          );
         } else {
           statement = await connection.createStatement();
           await statement.prepare(obj.sql);
