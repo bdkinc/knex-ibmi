@@ -478,9 +478,8 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     ].filter(Boolean).join(" ");
     if (returning) {
       const selectColumns = this.formatter.columnize(this.single.returning);
-      const expectedSql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
       return {
-        sql: expectedSql,
+        sql: baseUpdateSql,
         returning,
         _ibmiUpdateReturning: {
           updateSql: baseUpdateSql,
@@ -492,7 +491,7 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     }
     return { sql: baseUpdateSql, returning };
   }
-  // Emulate DELETE ... RETURNING by compiling a FINAL TABLE wrapper for display and attaching metadata
+  // Emulate DELETE ... RETURNING by attaching metadata for SELECT + DELETE execution
   del() {
     const baseDelete = super.del();
     const { returning } = this.single;
@@ -501,9 +500,8 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     }
     const deleteSql = typeof baseDelete === "object" && baseDelete.sql ? baseDelete.sql : baseDelete;
     const selectColumns = this.formatter.columnize(returning);
-    const expectedSql = `select ${selectColumns} from FINAL TABLE(${deleteSql})`;
     return {
-      sql: expectedSql,
+      sql: deleteSql,
       returning,
       _ibmiDeleteReturning: {
         deleteSql,

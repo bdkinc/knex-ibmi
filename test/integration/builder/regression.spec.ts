@@ -113,22 +113,22 @@ describe("Regression Tests", () => {
   describe("UPDATE returning transaction-based approach", () => {
     it("should compile UPDATE returning with single column", () => {
       const query = knex('users').update({name: 'John'}).where('id', 1).returning('id');
-      testSql(query, "select id from FINAL TABLE(update users set name = 'John' where id = 1)");
+      testSql(query, "update users set name = 'John' where id = 1");
     });
 
     it("should compile UPDATE returning with multiple columns", () => {
       const query = knex('users').update({name: 'John', email: 'john@example.com'}).where('id', 1).returning(['id', 'name']);
-      testSql(query, "select id, name from FINAL TABLE(update users set name = 'John', email = 'john@example.com' where id = 1)");
+      testSql(query, "update users set name = 'John', email = 'john@example.com' where id = 1");
     });
 
     it("should compile UPDATE returning with complex WHERE clause", () => {
       const query = knex('users').update({status: 'active'}).where('age', '>', 18).andWhere('verified', true).returning(['id', 'status']);
-      testSql(query, "select id, status from FINAL TABLE(update users set status = 'active' where age > 18 and verified = true)");
+      testSql(query, "update users set status = 'active' where age > 18 and verified = true");
     });
 
     it("should handle UPDATE returning with no WHERE clause", () => {
       const query = knex('settings').update({updated_at: knex.raw('NOW()')}).returning('id');
-      testSql(query, "select id from FINAL TABLE(update settings set updated_at = NOW())");
+      testSql(query, "update settings set updated_at = NOW()");
     });
 
     it("should preserve metadata for execution", () => {

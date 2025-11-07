@@ -103,7 +103,7 @@ describe("Update Statements", () => {
     const query = knex("test").update(updates).where("x", "y").returning("id");
     testSql(
       query,
-      "select id from FINAL TABLE(update test set x = 10, y = 20 where x = 'y')",
+      "update test set x = 10, y = 20 where x = 'y'",
     );
   });
 
@@ -115,7 +115,7 @@ describe("Update Statements", () => {
       .returning(["id", "x"]);
     testSql(
       query,
-      "select id, x from FINAL TABLE(update test set x = 10, y = 20 where x = 'y')",
+      "update test set x = 10, y = 20 where x = 'y'",
     );
   });
 
