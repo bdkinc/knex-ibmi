@@ -28,9 +28,11 @@ Knex Query → QueryCompiler → DB2Client._query() → ODBC Connection → IBM 
 ```
 
 **Special Execution Paths**:
-- `_ibmiUpdateReturning`: UPDATE + SELECT emulation
-- `_ibmiDeleteReturning`: SELECT + DELETE emulation  
+- `_ibmiUpdateReturning`: UPDATE + SELECT emulation (metadata attached to query object)
+- `_ibmiDeleteReturning`: SELECT + DELETE emulation (metadata attached to query object)
 - `_ibmiSequentialInsert`: Row-by-row insert for reliable identity values
+
+**Important**: UPDATE/DELETE with RETURNING clauses generate plain UPDATE/DELETE SQL (not `FINAL TABLE` syntax) to ensure `.toString()` and `.toQuery()` produce valid SQL. The actual RETURNING behavior is implemented via metadata that triggers separate query execution.
 
 ### Custom Migration System
 

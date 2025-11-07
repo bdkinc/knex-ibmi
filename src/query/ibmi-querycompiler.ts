@@ -300,13 +300,13 @@ class IBMiQueryCompiler extends QueryCompiler {
 
     // Handle returning clause
     if (returning) {
-      // For tests and toString(), show the expected FINAL TABLE format
-      // But add metadata for actual execution using UPDATE + SELECT approach
+      // Return the base UPDATE SQL (not FINAL TABLE wrapper)
+      // The metadata tells the client to execute UPDATE + SELECT separately
+      // This ensures that .toString() and .toQuery() don't generate invalid FINAL TABLE syntax
       const selectColumns = this.formatter.columnize(this.single.returning);
-      const expectedSql = `select ${selectColumns} from FINAL TABLE(${baseUpdateSql})`;
 
       return {
-        sql: expectedSql,
+        sql: baseUpdateSql,
         returning,
         _ibmiUpdateReturning: {
           updateSql: baseUpdateSql,
@@ -320,7 +320,7 @@ class IBMiQueryCompiler extends QueryCompiler {
     return { sql: baseUpdateSql, returning };
   }
 
-  // Emulate DELETE ... RETURNING by compiling a FINAL TABLE wrapper for display and attaching metadata
+  // Emulate DELETE ... RETURNING by attaching metadata for SELECT + DELETE execution
   del(): { sql: string; returning: any; _ibmiDeleteReturning?: any } {
     const baseDelete = super.del();
     const { returning } = this.single;
@@ -332,9 +332,11 @@ class IBMiQueryCompiler extends QueryCompiler {
         ? (baseDelete as any).sql
         : baseDelete;
     const selectColumns = this.formatter.columnize(returning);
-    const expectedSql = `select ${selectColumns} from FINAL TABLE(${deleteSql})`;
+    // Return the base DELETE SQL (not FINAL TABLE wrapper)
+    // The metadata tells the client to execute SELECT + DELETE separately
+    // This ensures that .toString() and .toQuery() don't generate invalid FINAL TABLE syntax
     return {
-      sql: expectedSql,
+      sql: deleteSql,
       returning,
       _ibmiDeleteReturning: {
         deleteSql,
