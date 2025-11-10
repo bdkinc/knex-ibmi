@@ -225,17 +225,18 @@ class DB2Client extends knex.Client {
   }
 
   _getConnectionString(connectionConfig: DB2ConnectionConfig) {
-    // Apply performance defaults if not explicitly set
-    const defaults: DB2ConnectionParams = {
-      BLOCKFETCH: 1, // Enable block fetch for better performance
-      TRUEAUTOCOMMIT: 0, // Use proper transaction handling
-    };
+    const userParams = connectionConfig.connectionStringParams || {};
 
-    // Merge defaults with user-provided params (user params take precedence)
-    const connectionStringParams = {
-      ...defaults,
-      ...(connectionConfig.connectionStringParams || {}),
-    };
+    // Use user-provided parameters directly without applying defaults
+    // Let the ODBC driver use its own defaults unless explicitly overridden
+    //
+    // Driver Defaults (for reference):
+    // - CMT: 2 (Read uncommitted / *CHG)
+    // - TRUEAUTOCOMMIT: 0 (*NONE isolation level)
+    // - BLOCKFETCH: 0 (disabled)
+    //
+    // Reference: https://www.ibm.com/docs/en/i/7.4.0?topic=details-connection-string-keywords
+    const connectionStringParams = { ...userParams };
 
     const connectionStringExtension = Object.keys(
       connectionStringParams

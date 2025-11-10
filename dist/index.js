@@ -934,16 +934,8 @@ var DB2Client = class extends import_knex.default.Client {
     return await connection.close();
   }
   _getConnectionString(connectionConfig) {
-    const defaults = {
-      BLOCKFETCH: 1,
-      // Enable block fetch for better performance
-      TRUEAUTOCOMMIT: 0
-      // Use proper transaction handling
-    };
-    const connectionStringParams = {
-      ...defaults,
-      ...connectionConfig.connectionStringParams || {}
-    };
+    const userParams = connectionConfig.connectionStringParams || {};
+    const connectionStringParams = { ...userParams };
     const connectionStringExtension = Object.keys(
       connectionStringParams
     ).reduce((result, key) => {

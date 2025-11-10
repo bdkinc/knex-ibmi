@@ -1,3 +1,35 @@
+## 0.5.6 - November 10th, 2025
+
+### ⚠️ Breaking Changes
+- **Removed automatic connection string parameter defaults**: The library no longer automatically sets `BLOCKFETCH`, `TRUEAUTOCOMMIT`, or other ODBC parameters
+  - **Reason**: Libraries should respect driver defaults unless explicitly overridden by users
+  - **Migration**: If you relied on auto-set parameters, explicitly add them to your `connectionStringParams`:
+    ```javascript
+    connectionStringParams: {
+      BLOCKFETCH: 1,        // If you want block fetching
+      TRUEAUTOCOMMIT: 0,    // If you want explicit control
+      CMT: 0                // If working with non-journaled tables
+    }
+    ```
+  - **Impact**: Most users won't notice any difference as driver defaults are sensible:
+    - CMT defaults to 2 (Read uncommitted / *CHG)
+    - TRUEAUTOCOMMIT defaults to 0 (*NONE isolation level)
+    - BLOCKFETCH defaults to 0 (disabled)
+
+### 📝 Documentation
+- Added comprehensive inline documentation for ODBC driver defaults
+- Added reference to IBM i Connection String Keywords documentation
+- Added test files for non-journaled table operations in test project
+- Documented that `CMT=0` works with non-journaled tables using driver default `TRUEAUTOCOMMIT=0`
+
+### 🧪 Testing
+- Updated unit tests to verify no automatic parameter setting
+- Added tests for explicit parameter pass-through
+- Added live integration tests for non-journaled table operations with CMT=0
+- All 97 unit tests passing
+
+---
+
 ## 0.5.0 - [Date TBD]
 
 ### 🚀 Performance Improvements

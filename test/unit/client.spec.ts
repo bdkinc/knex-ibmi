@@ -13,7 +13,7 @@ describe("IBMi Client", () => {
   });
 
   describe("Connection String", () => {
-    it("should return expected connection string", () => {
+    it("should return expected connection string with driver defaults", () => {
       const connectionConfig = {
         host: "localhost",
         database: "testdb",
@@ -25,8 +25,7 @@ describe("IBMi Client", () => {
       const expectedConnectionString =
         `DRIVER=${connectionConfig.driver};SYSTEM=${connectionConfig.host};` +
         `PORT=${connectionConfig.port};DATABASE=${connectionConfig.database};` +
-        `UID=${connectionConfig.user};PWD=${connectionConfig.password};` +
-        `BLOCKFETCH=1;TRUEAUTOCOMMIT=0;`;
+        `UID=${connectionConfig.user};PWD=${connectionConfig.password};`;
 
       const connectionString = client._getConnectionString(connectionConfig);
 
@@ -45,6 +44,88 @@ describe("IBMi Client", () => {
       const connectionString = client._getConnectionString(connectionConfig);
 
       expect(connectionString.endsWith("X=1;Y=20;")).to.be.true;
+    });
+
+    it("should pass through CMT parameter without modifying TRUEAUTOCOMMIT", () => {
+      const connectionConfig = {
+        host: "localhost",
+        database: "testdb",
+        port: 8471,
+        user: "db2inst1",
+        password: "password",
+        driver: "{IBM Cli Driver}",
+        connectionStringParams: {
+          CMT: 0, // Disable commitment control (*NONE)
+        },
+      };
+
+      const connectionString = client._getConnectionString(connectionConfig);
+
+      // Should pass through CMT without automatically setting TRUEAUTOCOMMIT
+      expect(connectionString).to.include("CMT=0");
+      expect(connectionString).to.not.include("TRUEAUTOCOMMIT");
+    });
+
+    it("should respect user-specified TRUEAUTOCOMMIT value", () => {
+      const connectionConfig = {
+        host: "localhost",
+        database: "testdb",
+        port: 8471,
+        user: "db2inst1",
+        password: "password",
+        driver: "{IBM Cli Driver}",
+        connectionStringParams: {
+          CMT: 0,
+          TRUEAUTOCOMMIT: 1, // User explicitly wants TRUEAUTOCOMMIT=1
+        },
+      };
+
+      const connectionString = client._getConnectionString(connectionConfig);
+
+      // Should use user's explicit value
+      expect(connectionString).to.include("CMT=0");
+      expect(connectionString).to.include("TRUEAUTOCOMMIT=1");
+    });
+
+    it("should respect multiple user-specified parameters", () => {
+      const connectionConfig = {
+        host: "localhost",
+        database: "testdb",
+        port: 8471,
+        user: "db2inst1",
+        password: "password",
+        driver: "{IBM Cli Driver}",
+        connectionStringParams: {
+          CMT: 0,
+          TRUEAUTOCOMMIT: 0,
+          BLOCKFETCH: 1,
+        },
+      };
+
+      const connectionString = client._getConnectionString(connectionConfig);
+
+      // All user settings should be respected
+      expect(connectionString).to.include("CMT=0");
+      expect(connectionString).to.include("TRUEAUTOCOMMIT=0");
+      expect(connectionString).to.include("BLOCKFETCH=1");
+    });
+
+    it("should not add any parameters when none are specified", () => {
+      const connectionConfig = {
+        host: "localhost",
+        database: "testdb",
+        port: 8471,
+        user: "db2inst1",
+        password: "password",
+        driver: "{IBM Cli Driver}",
+      };
+
+      const connectionString = client._getConnectionString(connectionConfig);
+
+      // Should only contain basic connection info, no auto-added parameters
+      expect(connectionString).to.not.include("TRUEAUTOCOMMIT");
+      expect(connectionString).to.not.include("CMT");
+      expect(connectionString).to.not.include("BLOCKFETCH");
     });
   });
 
