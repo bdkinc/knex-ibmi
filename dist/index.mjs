@@ -146,9 +146,6 @@ var IBMiTableCompiler = class extends TableCompiler {
       });
     }
   }
-  async commit(connection) {
-    return await connection.commit();
-  }
 };
 var ibmi_tablecompiler_default = IBMiTableCompiler;
 
@@ -161,6 +158,9 @@ var IBMiColumnCompiler = class extends ColumnCompiler {
   // Add more IBM i DB2 specific column types for better support
   bigIncrements(options = { primaryKey: true }) {
     return "bigint not null generated always as identity (start with 1, increment by 1)" + (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
+  }
+  smallIncrements(options = { primaryKey: true }) {
+    return "smallint not null generated always as identity (start with 1, increment by 1)" + (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "");
   }
   varchar(length) {
     return length ? `varchar(${length})` : "varchar(255)";
@@ -394,11 +394,12 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     return "";
   }
   generateCacheKey(data) {
+    const tablePrefix = this.tableName ? `${this.tableName}:` : "";
     if (Array.isArray(data) && data.length > 0) {
-      return Object.keys(data[0] || {}).sort().join("|");
+      return tablePrefix + Object.keys(data[0] || {}).sort().join("|");
     }
     if (data && typeof data === "object") {
-      return Object.keys(data).sort().join("|");
+      return tablePrefix + Object.keys(data).sort().join("|");
     }
     return "";
   }
@@ -531,18 +532,6 @@ var IBMiQueryCompiler = class extends QueryCompiler {
         return "";
     }
   }
-  getOptimizationHints(queryType, data) {
-    const hints = [];
-    if (queryType === "select") {
-      hints.push("WITH UR");
-    }
-    return hints.length > 0 ? " " + hints.join(" ") : "";
-  }
-  getSelectOptimizationHints(sql) {
-    const hints = [];
-    hints.push("WITH UR");
-    return hints.length > 0 ? " " + hints.join(" ") : "";
-  }
   columnizeWithPrefix(prefix, target) {
     const columns = typeof target === "string" ? [target] : target;
     const parts = [];
@@ -561,6 +550,7 @@ import { Readable } from "stream";
 // src/migrations/ibmi-migration-runner.ts
 import fs from "fs";
 import path from "path";
+import { pathToFileURL } from "url";
 var IBMiMigrationRunner = class {
   constructor(knex2, config) {
     __publicField(this, "knex");
@@ -618,7 +608,8 @@ var IBMiMigrationRunner = class {
 \u{1F504} Running migration: ${migrationFile}`);
         try {
           const migrationPath = this.getMigrationPath(migrationFile);
-          const migration = await import(migrationPath);
+          const fileUrl = pathToFileURL(migrationPath).href;
+          const migration = await import(`${fileUrl}?t=${Date.now()}`);
           if (!migration.up || typeof migration.up !== "function") {
             throw new Error(`Migration ${migrationFile} has no 'up' function`);
           }
@@ -665,7 +656,8 @@ var IBMiMigrationRunner = class {
 \u{1F504} Rolling back migration: ${migrationFile}`);
         try {
           const migrationPath = this.getMigrationPath(migrationFile);
-          const migration = await import(migrationPath);
+          const fileUrl = pathToFileURL(migrationPath).href;
+          const migration = await import(`${fileUrl}?t=${Date.now()}`);
           if (migration.down && typeof migration.down === "function") {
             console.log(`  \u26A1 Executing rollback...`);
             await migration.down(this.knex);
@@ -962,10 +954,19 @@ var DB2Client = class extends knex.Client {
     }
   }
   /**
-   * Execute UPDATE with returning clause using transaction + SELECT approach
+   * Execute UPDATE with returning clause using UPDATE + SELECT approach.
    * Since IBM i DB2 doesn't support FINAL TABLE with UPDATE, we:
    * 1. Execute the UPDATE statement
    * 2. Execute a SELECT to get the updated values using the same WHERE clause
+   *
+   * @warning RACE CONDITION: In concurrent environments, rows may change between
+   * the UPDATE and SELECT operations. If another transaction modifies, inserts,
+   * or deletes rows matching the WHERE clause between these two statements,
+   * the returned results may not accurately reflect what was updated.
+   * For strict consistency requirements, consider:
+   * - Using serializable transaction isolation level
+   * - Implementing optimistic locking at the application level
+   * - Avoiding `.returning()` on UPDATE and fetching data separately
    */
   async executeUpdateReturning(connection, obj) {
     const { _ibmiUpdateReturning } = obj;
@@ -1456,7 +1457,7 @@ var DB2Client = class extends knex.Client {
       return sqlState.startsWith("08") || // 08001, 08003, 08007, 08S01, etc.
       sqlState === "40003";
     }
-    const errorMessage = (error.message || error.toString || error).toLowerCase();
+    const errorMessage = (error.message || String(error)).toLowerCase();
     return errorMessage.includes("connection") && (errorMessage.includes("closed") || errorMessage.includes("invalid") || errorMessage.includes("terminated") || errorMessage.includes("not connected"));
   }
   isTimeoutError(error) {
@@ -1465,7 +1466,7 @@ var DB2Client = class extends knex.Client {
       return sqlState === "HYT00" || // Timeout expired
       sqlState === "HYT01";
     }
-    const errorMessage = (error.message || error.toString || error).toLowerCase();
+    const errorMessage = (error.message || String(error)).toLowerCase();
     return errorMessage.includes("timeout") || errorMessage.includes("timed out");
   }
   isSQLError(error) {
@@ -1476,7 +1477,7 @@ var DB2Client = class extends knex.Client {
       sqlState.startsWith("23") || // Integrity constraint violation
       sqlState.startsWith("21");
     }
-    const errorMessage = (error.message || error.toString || error).toLowerCase();
+    const errorMessage = (error.message || String(error)).toLowerCase();
     return errorMessage.includes("sql") || errorMessage.includes("syntax") || errorMessage.includes("table") || errorMessage.includes("column");
   }
   processSqlMethod(obj) {

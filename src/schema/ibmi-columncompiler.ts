@@ -19,33 +19,40 @@ class IBMiColumnCompiler extends ColumnCompiler {
     );
   }
 
+  smallIncrements(options = { primaryKey: true }) {
+    return (
+      "smallint not null generated always as identity (start with 1, increment by 1)" +
+      (this.tableCompiler._canBeAddPrimaryKey(options) ? " primary key" : "")
+    );
+  }
+
   varchar(length?: number) {
-    return length ? `varchar(${length})` : 'varchar(255)';
+    return length ? `varchar(${length})` : "varchar(255)";
   }
 
   char(length?: number) {
-    return length ? `char(${length})` : 'char(1)';
+    return length ? `char(${length})` : "char(1)";
   }
 
   text() {
     // IBM i DB2 uses CLOB for large text
-    return 'clob(1M)';
+    return "clob(1M)";
   }
 
   mediumtext() {
-    return 'clob(16M)';
+    return "clob(16M)";
   }
 
   longtext() {
-    return 'clob(2G)';
+    return "clob(2G)";
   }
 
   binary(length?: number) {
-    return length ? `binary(${length})` : 'binary(1)';
+    return length ? `binary(${length})` : "binary(1)";
   }
 
   varbinary(length?: number) {
-    return length ? `varbinary(${length})` : 'varbinary(255)';
+    return length ? `varbinary(${length})` : "varbinary(255)";
   }
 
   // IBM i DB2 decimal with precision/scale
@@ -55,7 +62,7 @@ class IBMiColumnCompiler extends ColumnCompiler {
     } else if (precision) {
       return `decimal(${precision})`;
     }
-    return 'decimal(10, 2)';
+    return "decimal(10, 2)";
   }
 
   // IBM i DB2 timestamp
@@ -63,10 +70,10 @@ class IBMiColumnCompiler extends ColumnCompiler {
   timestamp(options?: any) {
     if (options?.useTz && this.client?.logger?.warn) {
       this.client.logger.warn(
-        'IBM i DB2 does not support TIMESTAMP WITH TIME ZONE. Using plain TIMESTAMP instead.'
+        "IBM i DB2 does not support TIMESTAMP WITH TIME ZONE. Using plain TIMESTAMP instead.",
       );
     }
-    return 'timestamp';
+    return "timestamp";
   }
 
   datetime(options?: any) {
@@ -75,28 +82,28 @@ class IBMiColumnCompiler extends ColumnCompiler {
 
   // IBM i DB2 date and time types
   date() {
-    return 'date';
+    return "date";
   }
 
   time() {
-    return 'time';
+    return "time";
   }
 
   // JSON support (IBM i 7.3+)
   // Note: CHECK constraints with column references are not supported in this context
   // Users should add validation constraints separately if needed
   json() {
-    return 'clob(16M)';
+    return "clob(16M)";
   }
 
   jsonb() {
     // IBM i doesn't have native JSONB, use CLOB
-    return 'clob(16M)';
+    return "clob(16M)";
   }
 
   // UUID support using CHAR(36)
   uuid() {
-    return 'char(36)';
+    return "char(36)";
   }
 }
 

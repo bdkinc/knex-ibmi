@@ -57,10 +57,19 @@ declare class DB2Client extends knex.Client {
     _getConnectionString(connectionConfig: DB2ConnectionConfig): string;
     _query(connection: Connection, obj: any): Promise<any>;
     /**
-     * Execute UPDATE with returning clause using transaction + SELECT approach
+     * Execute UPDATE with returning clause using UPDATE + SELECT approach.
      * Since IBM i DB2 doesn't support FINAL TABLE with UPDATE, we:
      * 1. Execute the UPDATE statement
      * 2. Execute a SELECT to get the updated values using the same WHERE clause
+     *
+     * @warning RACE CONDITION: In concurrent environments, rows may change between
+     * the UPDATE and SELECT operations. If another transaction modifies, inserts,
+     * or deletes rows matching the WHERE clause between these two statements,
+     * the returned results may not accurately reflect what was updated.
+     * For strict consistency requirements, consider:
+     * - Using serializable transaction isolation level
+     * - Implementing optimistic locking at the application level
+     * - Avoiding `.returning()` on UPDATE and fetching data separately
      */
     private executeUpdateReturning;
     private executeSequentialInsert;

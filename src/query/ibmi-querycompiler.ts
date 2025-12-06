@@ -11,13 +11,13 @@ class IBMiQueryCompiler extends QueryCompiler {
   // Override select method to add IBM i optimization hints
   select() {
     let sql = super.select.call(this);
-    
+
     // Add WITH UR (uncommitted read) if configured
     const readUncommitted = this.client?.config?.ibmi?.readUncommitted === true;
-    if (readUncommitted && typeof sql === 'string') {
-      sql = sql + ' WITH UR';
+    if (readUncommitted && typeof sql === "string") {
+      sql = sql + " WITH UR";
     }
-    
+
     return sql;
   }
 
@@ -76,19 +76,19 @@ class IBMiQueryCompiler extends QueryCompiler {
     // For IBM i, wrap INSERT with FINAL TABLE only when RETURNING is requested
     // Multi-row inserts without RETURNING should use plain INSERT for performance
     const multiRow = isArrayInsert && !forceSingleRow;
-    
+
     // If multi-row insert without returning, use plain INSERT (return rowCount only)
     if (multiRow && !returning) {
       return { sql: insertSql, returning: undefined };
     }
-    
+
     // Warn about potentially large result sets
     if (multiRow && returning === "*") {
       if (this.client?.printWarn) {
         this.client.printWarn("multi-row insert with returning * may be large");
       }
     }
-    
+
     // Use FINAL TABLE for single-row or when returning is specified
     const selectColumns = returning
       ? this.formatter.columnize(returning)
@@ -186,21 +186,26 @@ class IBMiQueryCompiler extends QueryCompiler {
   }
 
   private generateCacheKey(data: any): string {
+    // Include table name to prevent cache collisions between tables with same columns
+    const tablePrefix = this.tableName ? `${this.tableName}:` : "";
     if (Array.isArray(data) && data.length > 0) {
       // Use the keys of the first object as cache key
-      return Object.keys(data[0] || {})
-        .sort()
-        .join("|");
+      return (
+        tablePrefix +
+        Object.keys(data[0] || {})
+          .sort()
+          .join("|")
+      );
     }
     if (data && typeof data === "object") {
-      return Object.keys(data).sort().join("|");
+      return tablePrefix + Object.keys(data).sort().join("|");
     }
     return "";
   }
 
   private buildFromCache(
     data: any,
-    cachedColumns: string[]
+    cachedColumns: string[],
   ): { columns: any; values: any } {
     const dataArray = Array.isArray(data) ? data : data ? [data] : [];
     const values: any[] = [];
@@ -234,7 +239,7 @@ class IBMiQueryCompiler extends QueryCompiler {
       undefined,
       this.builder,
       this.client,
-      this.bindingsHolder
+      this.bindingsHolder,
     );
 
     if (isRaw) {
@@ -366,28 +371,6 @@ class IBMiQueryCompiler extends QueryCompiler {
       default:
         return "";
     }
-  }
-
-  private getOptimizationHints(queryType: string, data?: any): string {
-    const hints: string[] = [];
-
-    // IBM i DB2 doesn't support OPTIMIZE FOR in all contexts
-    // Use WITH UR (Uncommitted Read) for better concurrency instead
-    if (queryType === "select") {
-      hints.push("WITH UR"); // Uncommitted Read for better performance on read-heavy workloads
-    }
-
-    return hints.length > 0 ? " " + hints.join(" ") : "";
-  }
-
-  private getSelectOptimizationHints(sql: string): string {
-    const hints: string[] = [];
-
-    // Only use WITH UR for read operations on IBM i DB2
-    // OPTIMIZE FOR syntax causes errors on this IBM i version
-    hints.push("WITH UR");
-
-    return hints.length > 0 ? " " + hints.join(" ") : "";
   }
 
   columnizeWithPrefix(prefix: string, target: string | string[]) {

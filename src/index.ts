@@ -76,8 +76,8 @@ class StatementCache {
       statements.map((stmt) =>
         stmt && typeof stmt.close === "function"
           ? stmt.close().catch(() => {})
-          : Promise.resolve()
-      )
+          : Promise.resolve(),
+      ),
     );
   }
 
@@ -97,14 +97,14 @@ class DB2Client extends knex.Client {
 
     if (this.dialect && !this.config.client) {
       this.printWarn(
-        `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the future. Please use configuration option 'client' instead.`
+        `Using 'this.dialect' to identify the client is deprecated and support for it will be removed in the future. Please use configuration option 'client' instead.`,
       );
     }
 
     const dbClient = this.config.client || this.dialect;
     if (!dbClient) {
       throw new Error(
-        `knex: Required configuration option 'client' is missing.`
+        `knex: Required configuration option 'client' is missing.`,
       );
     }
 
@@ -125,7 +125,8 @@ class DB2Client extends knex.Client {
     }
 
     const ibmiConfig = (config as any)?.ibmi;
-    this.normalizeBigintToString = ibmiConfig?.normalizeBigintToString !== false;
+    this.normalizeBigintToString =
+      ibmiConfig?.normalizeBigintToString !== false;
   }
 
   // Helper method to safely stringify objects that might have circular references
@@ -197,13 +198,13 @@ class DB2Client extends knex.Client {
     }
 
     this.printDebug(
-      "connection config: " + this._getConnectionString(connectionConfig)
+      "connection config: " + this._getConnectionString(connectionConfig),
     );
 
     // Use simple ODBC connection - Knex manages the pooling
     // This fixes the double-pooling bug where a new ODBC pool was created per connection
     const connection = await this.driver.connect(
-      this._getConnectionString(connectionConfig)
+      this._getConnectionString(connectionConfig),
     );
 
     return connection;
@@ -239,7 +240,7 @@ class DB2Client extends knex.Client {
     const connectionStringParams = { ...userParams };
 
     const connectionStringExtension = Object.keys(
-      connectionStringParams
+      connectionStringParams,
     ).reduce((result, key) => {
       const value = connectionStringParams[key];
       return `${result}${key}=${value};`;
@@ -285,11 +286,11 @@ class DB2Client extends knex.Client {
         queryObject.sql.toLowerCase().includes("knex_migrations"))
     ) {
       this.printDebug(
-        `Executing ${method} query: ${queryObject.sql.substring(0, 200)}...`
+        `Executing ${method} query: ${queryObject.sql.substring(0, 200)}...`,
       );
       if (queryObject.bindings?.length) {
         this.printDebug(
-          `Bindings: ${this.safeStringify(queryObject.bindings)}`
+          `Bindings: ${this.safeStringify(queryObject.bindings)}`,
         );
       }
     }
@@ -320,7 +321,7 @@ class DB2Client extends knex.Client {
 
       if (this.isConnectionError(error)) {
         this.printError(
-          `Connection error during ${method} query: ${error.message}`
+          `Connection error during ${method} query: ${error.message}`,
         );
 
         // For critical migration operations, retry once before failing
@@ -335,21 +336,30 @@ class DB2Client extends knex.Client {
   }
 
   /**
-   * Execute UPDATE with returning clause using transaction + SELECT approach
+   * Execute UPDATE with returning clause using UPDATE + SELECT approach.
    * Since IBM i DB2 doesn't support FINAL TABLE with UPDATE, we:
    * 1. Execute the UPDATE statement
    * 2. Execute a SELECT to get the updated values using the same WHERE clause
+   *
+   * @warning RACE CONDITION: In concurrent environments, rows may change between
+   * the UPDATE and SELECT operations. If another transaction modifies, inserts,
+   * or deletes rows matching the WHERE clause between these two statements,
+   * the returned results may not accurately reflect what was updated.
+   * For strict consistency requirements, consider:
+   * - Using serializable transaction isolation level
+   * - Implementing optimistic locking at the application level
+   * - Avoiding `.returning()` on UPDATE and fetching data separately
    */
   private async executeUpdateReturning(
     connection: Connection,
-    obj: any
+    obj: any,
   ): Promise<any> {
     const { _ibmiUpdateReturning } = obj;
     const { updateSql, selectColumns, whereClause, tableName } =
       _ibmiUpdateReturning;
 
     this.printDebug(
-      "Executing UPDATE with returning using transaction approach"
+      "Executing UPDATE with returning using transaction approach",
     );
 
     try {
@@ -399,7 +409,7 @@ class DB2Client extends knex.Client {
 
   private async executeSequentialInsert(
     connection: Connection,
-    obj: any
+    obj: any,
   ): Promise<any> {
     const meta = obj._ibmiSequentialInsert;
     const { rows, columns, tableName, returning, identityOnly } = meta;
@@ -415,7 +425,7 @@ class DB2Client extends knex.Client {
         beganTx = true;
       } catch (e) {
         this.printWarn(
-          "Could not begin transaction for sequential insert; proceeding without"
+          "Could not begin transaction for sequential insert; proceeding without",
         );
       }
     }
@@ -447,7 +457,7 @@ class DB2Client extends knex.Client {
       } catch (commitErr) {
         this.printError(
           "Commit failed for sequential insert, attempting rollback: " +
-            (commitErr as any)?.message
+            (commitErr as any)?.message,
         );
         try {
           await connection.query("ROLLBACK");
@@ -466,7 +476,7 @@ class DB2Client extends knex.Client {
 
   private async executeDeleteReturning(
     connection: Connection,
-    obj: any
+    obj: any,
   ): Promise<any> {
     const meta = obj._ibmiDeleteReturning;
     const { deleteSql, selectColumns, whereClause, tableName } = meta;
@@ -523,11 +533,11 @@ class DB2Client extends knex.Client {
 
   private async executeSelectQuery(
     connection: Connection,
-    obj: { sql: string; bindings: any[]; response: unknown }
+    obj: { sql: string; bindings: any[]; response: unknown },
   ): Promise<void> {
     const rows: Record<any, any>[] = await connection.query(
       obj.sql,
-      obj.bindings
+      obj.bindings,
     );
     if (rows) {
       const normalizedRows = this.maybeNormalizeBigint(rows);
@@ -537,7 +547,7 @@ class DB2Client extends knex.Client {
 
   private async executeStatementQuery(
     connection: Connection,
-    obj: any
+    obj: any,
   ): Promise<void> {
     let statement: any;
     let usedCache = false;
@@ -559,7 +569,7 @@ class DB2Client extends knex.Client {
         if (statement) {
           usedCache = true;
           this.printDebug(
-            `Using cached statement for: ${obj.sql.substring(0, 50)}...`
+            `Using cached statement for: ${obj.sql.substring(0, 50)}...`,
           );
         } else {
           // Create and cache new statement
@@ -600,7 +610,7 @@ class DB2Client extends knex.Client {
       const hasNoDataState = Array.isArray(odbcErrors)
         ? odbcErrors.some(
             (e: any) =>
-              String(e?.state || e?.SQLSTATE || "").toUpperCase() === "02000"
+              String(e?.state || e?.SQLSTATE || "").toUpperCase() === "02000",
           )
         : false;
 
@@ -609,7 +619,7 @@ class DB2Client extends knex.Client {
         (isEmptyOdbcError || hasNoDataState || this.isNoDataError(err))
       ) {
         this.printWarn(
-          `ODBC signaled no-data for ${sql.includes("update") ? "UPDATE" : "DELETE"}; treating as 0 rows affected`
+          `ODBC signaled no-data for ${sql.includes("update") ? "UPDATE" : "DELETE"}; treating as 0 rows affected`,
         );
         obj.response = { rows: [], rowCount: 0 };
         return;
@@ -625,7 +635,7 @@ class DB2Client extends knex.Client {
         } catch (closeErr) {
           // Ignore close errors, log in debug mode only
           this.printDebug(
-            `Error closing statement: ${this.safeStringify(closeErr, 2)}`
+            `Error closing statement: ${this.safeStringify(closeErr, 2)}`,
           );
         }
       }
@@ -662,7 +672,7 @@ class DB2Client extends knex.Client {
 
   private normalizeBigintValue(
     value: any,
-    seen: WeakSet<object> = new WeakSet()
+    seen: WeakSet<object> = new WeakSet(),
   ): any {
     if (typeof value === "bigint") {
       return value.toString();
@@ -714,7 +724,7 @@ class DB2Client extends knex.Client {
 
     if (isIdentityQuery && result.columns?.length > 0) {
       const identityRows = result.map(
-        (row: { [x: string]: any }) => row[result.columns[0].name]
+        (row: { [x: string]: any }) => row[result.columns[0].name],
       );
       const normalizedIdentityRows = this.maybeNormalizeBigint(identityRows);
       return {
@@ -737,7 +747,7 @@ class DB2Client extends knex.Client {
     stream: any,
     options: {
       fetchSize?: number;
-    }
+    },
   ) {
     if (!obj.sql) throw new Error("A query is required to stream results");
 
@@ -784,7 +794,7 @@ class DB2Client extends knex.Client {
             reject(err);
           });
           readableStream.pipe(stream);
-        }
+        },
       );
     });
   }
@@ -845,7 +855,7 @@ class DB2Client extends knex.Client {
             if (closeError) {
               parentThis.printDebug(
                 "Error closing cursor during destroy: " +
-                  parentThis.safeStringify(closeError)
+                  parentThis.safeStringify(closeError),
               );
             }
             callback(err);
@@ -881,7 +891,7 @@ class DB2Client extends knex.Client {
   createMigrationRunner(
     config?: Partial<
       import("./migrations/ibmi-migration-runner").IBMiMigrationConfig
-    >
+    >,
   ) {
     // Pass the knex instance from the client context
     const knexInstance = (this as any).context || (this as any);
@@ -903,11 +913,11 @@ class DB2Client extends knex.Client {
         // Enhanced error handling for custom output functions
         const wrappedError = this.wrapError(error, "custom_output", obj);
         this.printError(
-          `Custom output function failed: ${wrappedError.message}`
+          `Custom output function failed: ${wrappedError.message}`,
         );
         if (this.isConnectionError(error)) {
           throw new Error(
-            "Connection closed during query processing - consider using migrations.disableTransactions: true for DDL operations"
+            "Connection closed during query processing - consider using migrations.disableTransactions: true for DDL operations",
           );
         }
         throw wrappedError;
@@ -955,25 +965,25 @@ class DB2Client extends knex.Client {
 
     if (this.isConnectionError(error)) {
       return new Error(
-        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${contextStr}`
+        `IBM i DB2 connection error during ${method}: ${error.message} | Context: ${contextStr}`,
       );
     }
 
     if (this.isTimeoutError(error)) {
       return new Error(
-        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${contextStr}`
+        `IBM i DB2 timeout during ${method}: ${error.message} | Context: ${contextStr}`,
       );
     }
 
     if (this.isSQLError(error)) {
       return new Error(
-        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${contextStr}`
+        `IBM i DB2 SQL error during ${method}: ${error.message} | Context: ${contextStr}`,
       );
     }
 
     // Generic error with context
     return new Error(
-      `IBM i DB2 error during ${method}: ${error.message} | Context: ${contextStr}`
+      `IBM i DB2 error during ${method}: ${error.message} | Context: ${contextStr}`,
     );
   }
 
@@ -987,7 +997,7 @@ class DB2Client extends knex.Client {
   private async retryQuery(
     connection: Connection,
     queryObject: any,
-    method: string
+    method: string,
   ): Promise<any> {
     this.printDebug(`Retrying ${method} query due to connection error...`);
     try {
@@ -1034,11 +1044,7 @@ class DB2Client extends knex.Client {
     }
 
     // Fallback to message parsing
-    const errorMessage = (
-      error.message ||
-      error.toString ||
-      error
-    ).toLowerCase();
+    const errorMessage = (error.message || String(error)).toLowerCase();
     return (
       errorMessage.includes("connection") &&
       (errorMessage.includes("closed") ||
@@ -1060,11 +1066,7 @@ class DB2Client extends knex.Client {
     }
 
     // Fallback to message parsing
-    const errorMessage = (
-      error.message ||
-      error.toString ||
-      error
-    ).toLowerCase();
+    const errorMessage = (error.message || String(error)).toLowerCase();
     return (
       errorMessage.includes("timeout") || errorMessage.includes("timed out")
     );
@@ -1084,11 +1086,7 @@ class DB2Client extends knex.Client {
     }
 
     // Fallback to message parsing
-    const errorMessage = (
-      error.message ||
-      error.toString ||
-      error
-    ).toLowerCase();
+    const errorMessage = (error.message || String(error)).toLowerCase();
     return (
       errorMessage.includes("sql") ||
       errorMessage.includes("syntax") ||

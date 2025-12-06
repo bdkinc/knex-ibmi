@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { pathToFileURL } from "url";
 import { Knex } from "knex";
 
 export interface IBMiMigrationConfig {
@@ -35,14 +36,14 @@ export class IBMiMigrationRunner {
   async latest(): Promise<void> {
     try {
       console.log(
-        "🚀 IBM i DB2 Migration Runner - bypassing Knex locking system"
+        "🚀 IBM i DB2 Migration Runner - bypassing Knex locking system",
       );
 
       // Ensure the migration table exists
       const tableName = this.getFullTableName();
 
       const migrationTableExists = await (this.knex as any).schema.hasTable(
-        tableName
+        tableName,
       );
       if (!migrationTableExists) {
         console.log(`📝 Creating migration table: ${tableName}`);
@@ -66,7 +67,7 @@ export class IBMiMigrationRunner {
 
       // Find new migrations to run
       const newMigrations = migrationFiles.filter(
-        (file) => !completedNames.includes(file)
+        (file) => !completedNames.includes(file),
       );
 
       if (newMigrations.length === 0) {
@@ -87,9 +88,10 @@ export class IBMiMigrationRunner {
         console.log(`\n🔄 Running migration: ${migrationFile}`);
 
         try {
-          // Import the migration
+          // Import the migration with cache busting to ensure fresh imports
           const migrationPath = this.getMigrationPath(migrationFile);
-          const migration = await import(migrationPath);
+          const fileUrl = pathToFileURL(migrationPath).href;
+          const migration = await import(`${fileUrl}?t=${Date.now()}`);
 
           if (!migration.up || typeof migration.up !== "function") {
             throw new Error(`Migration ${migrationFile} has no 'up' function`);
@@ -110,7 +112,7 @@ export class IBMiMigrationRunner {
         } catch (error: any) {
           console.error(
             `  ❌ Migration ${migrationFile} failed:`,
-            error.message
+            error.message,
           );
           throw error;
         }
@@ -158,16 +160,17 @@ export class IBMiMigrationRunner {
         console.log(`\n🔄 Rolling back migration: ${migrationFile}`);
 
         try {
-          // Import the migration
+          // Import the migration with cache busting to ensure fresh imports
           const migrationPath = this.getMigrationPath(migrationFile);
-          const migration = await import(migrationPath);
+          const fileUrl = pathToFileURL(migrationPath).href;
+          const migration = await import(`${fileUrl}?t=${Date.now()}`);
 
           if (migration.down && typeof migration.down === "function") {
             console.log(`  ⚡ Executing rollback...`);
             await migration.down(this.knex);
           } else {
             console.log(
-              `  ⚠️ Migration ${migrationFile} has no 'down' function, skipping rollback`
+              `  ⚠️ Migration ${migrationFile} has no 'down' function, skipping rollback`,
             );
           }
 
@@ -175,12 +178,12 @@ export class IBMiMigrationRunner {
           await this.knex(tableName).where("NAME", migrationFile).del();
 
           console.log(
-            `  ✅ Migration ${migrationFile} rolled back successfully`
+            `  ✅ Migration ${migrationFile} rolled back successfully`,
           );
         } catch (error: any) {
           console.error(
             `  ❌ Migration ${migrationFile} rollback failed:`,
-            error.message
+            error.message,
           );
           throw error;
         }
@@ -198,7 +201,7 @@ export class IBMiMigrationRunner {
       const tableName = this.getFullTableName();
 
       const migrationTableExists = await (this.knex as any).schema.hasTable(
-        tableName
+        tableName,
       );
       if (!migrationTableExists) {
         return null;
@@ -221,7 +224,7 @@ export class IBMiMigrationRunner {
       const tableName = this.getFullTableName();
 
       const migrationTableExists = await (this.knex as any).schema.hasTable(
-        tableName
+        tableName,
       );
       if (!migrationTableExists) {
         return [];
@@ -278,7 +281,7 @@ export class IBMiMigrationRunner {
 // Export a factory function for easy instantiation
 export function createIBMiMigrationRunner(
   knex: Knex,
-  config?: Partial<IBMiMigrationConfig>
+  config?: Partial<IBMiMigrationConfig>,
 ): IBMiMigrationRunner {
   return new IBMiMigrationRunner(knex, config);
 }

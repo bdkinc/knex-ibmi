@@ -28,12 +28,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
 // src/cli.ts
 var import_knex = __toESM(require("knex"));
 var import_path2 = require("path");
-var import_url = require("url");
+var import_url2 = require("url");
 var import_fs2 = require("fs");
 
 // src/migrations/ibmi-migration-runner.ts
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
+var import_url = require("url");
 var IBMiMigrationRunner = class {
   constructor(knex2, config) {
     __publicField(this, "knex");
@@ -91,7 +92,8 @@ var IBMiMigrationRunner = class {
 \u{1F504} Running migration: ${migrationFile}`);
         try {
           const migrationPath = this.getMigrationPath(migrationFile);
-          const migration = await import(migrationPath);
+          const fileUrl = (0, import_url.pathToFileURL)(migrationPath).href;
+          const migration = await import(`${fileUrl}?t=${Date.now()}`);
           if (!migration.up || typeof migration.up !== "function") {
             throw new Error(`Migration ${migrationFile} has no 'up' function`);
           }
@@ -138,7 +140,8 @@ var IBMiMigrationRunner = class {
 \u{1F504} Rolling back migration: ${migrationFile}`);
         try {
           const migrationPath = this.getMigrationPath(migrationFile);
-          const migration = await import(migrationPath);
+          const fileUrl = (0, import_url.pathToFileURL)(migrationPath).href;
+          const migration = await import(`${fileUrl}?t=${Date.now()}`);
           if (migration.down && typeof migration.down === "function") {
             console.log(`  \u26A1 Executing rollback...`);
             await migration.down(this.knex);
@@ -369,7 +372,7 @@ function createMigrationFile(migrationName, directory, extension) {
 async function loadKnexfile(knexfilePath, environment) {
   try {
     const fullPath = (0, import_path2.resolve)(process.cwd(), knexfilePath);
-    const fileUrl = (0, import_url.pathToFileURL)(fullPath).href;
+    const fileUrl = (0, import_url2.pathToFileURL)(fullPath).href;
     const knexfile = await import(`${fileUrl}?t=${Date.now()}`);
     const config = knexfile.default || knexfile;
     if (!config || typeof config !== "object") {

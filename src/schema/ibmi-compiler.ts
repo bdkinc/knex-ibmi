@@ -110,8 +110,4 @@ class IBMiSchemaCompiler extends SchemaCompiler {
   }
 }
 
-function prefixedTableName(prefix: any, table: any) {
-  return prefix ? `${prefix}.${table}` : table;
-}
-
 export default IBMiSchemaCompiler;

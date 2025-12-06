@@ -1,5 +1,4 @@
 import TableCompiler from "knex/lib/schema/tablecompiler.js";
-import { Connection } from "odbc";
 
 class IBMiTableCompiler extends TableCompiler {
   // Use type assertion to work around ESM import interface issues
@@ -10,7 +9,7 @@ class IBMiTableCompiler extends TableCompiler {
     // The ifNot parameter should be handled by checking hasTable first
     if (ifNot && this.client?.logger?.warn) {
       this.client.logger.warn(
-        'IBM i DB2: IF NOT EXISTS is not natively supported. Use hasTable() check instead.'
+        "IBM i DB2: IF NOT EXISTS is not natively supported. Use hasTable() check instead.",
       );
     }
 
@@ -52,7 +51,7 @@ class IBMiTableCompiler extends TableCompiler {
     columns: string[],
     indexName:
       | string
-      | { indexName?: string; deferrable?: string; predicate?: any }
+      | { indexName?: string; deferrable?: string; predicate?: any },
   ) {
     let deferrable: string = "";
     let predicate: any;
@@ -68,7 +67,7 @@ class IBMiTableCompiler extends TableCompiler {
 
     if (deferrable && deferrable !== "not deferrable") {
       this.client.logger.warn?.(
-        `IBMi: unique index \`${finalIndexName}\` will not be deferrable ${deferrable}.`
+        `IBMi: unique index \`${finalIndexName}\` will not be deferrable ${deferrable}.`,
       );
     }
 
@@ -82,7 +81,7 @@ class IBMiTableCompiler extends TableCompiler {
       : "";
 
     this.pushQuery(
-      `create unique index ${wrappedIndexName} on ${this.tableName()} (${columns})${predicateQuery}`
+      `create unique index ${wrappedIndexName} on ${this.tableName()} (${columns})${predicateQuery}`,
     );
   }
 
@@ -103,10 +102,6 @@ class IBMiTableCompiler extends TableCompiler {
         bindings: columns.bindings,
       });
     }
-  }
-
-  async commit(connection: Connection) {
-    return await connection.commit();
   }
 }
 
