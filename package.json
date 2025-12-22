@@ -1,6 +1,6 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "Knex dialect for IBMi",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsup && node scripts/fix-cli.mjs",
     "test": "ts-mocha -p tsconfig.json --import=tsx test/**/*.spec.ts test/**/**/*.spec.ts --exit",
-    "lint": "eslint . --ext .ts",
+    "lint": "eslint src test",
     "format": "prettier . --write",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && npm run typecheck"
@@ -48,21 +48,24 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@types/chai": "^5.2.2",
+    "@eslint/js": "^9.39.2",
+    "@types/chai": "^5.2.3",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.3.2",
-    "@typescript-eslint/eslint-plugin": "^8.43.0",
-    "@typescript-eslint/parser": "^8.43.0",
-    "chai": "^6.0.1",
-    "debug": "^4.4.1",
-    "eslint": "^9.35.0",
+    "@types/node": "^25.0.3",
+    "@typescript-eslint/eslint-plugin": "^8.50.0",
+    "@typescript-eslint/parser": "^8.50.0",
+    "chai": "^6.2.1",
+    "debug": "^4.4.3",
+    "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
-    "mocha": "^11.7.2",
-    "prettier": "^3.6.2",
+    "jiti": "^2.6.1",
+    "mocha": "^11.7.5",
+    "prettier": "^3.7.4",
     "ts-mocha": "^11.1.0",
-    "tsup": "^8.5.0",
-    "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.50.0"
   },
   "dependencies": {
     "knex": "^3",

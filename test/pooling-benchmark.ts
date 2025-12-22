@@ -4,7 +4,7 @@
  * Run with: ts-node test/pooling-benchmark.ts
  */
 
-import knex, { Knex } from 'knex';
+import knex from 'knex';
 import { DB2Dialect, DB2Config } from '../src/index';
 
 // Configuration - UPDATE WITH YOUR CREDENTIALS
@@ -119,7 +119,7 @@ async function main() {
   };
   
   // Test 2: ODBC pooling (requires fixed implementation)
-  const odbcPoolConfig: DB2Config = {
+  const _odbcPoolConfig: DB2Config = {
     client: DB2Dialect,
     connection: baseConfig,
     pool: { min: 2, max: 10 },

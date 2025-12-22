@@ -47,7 +47,7 @@ export class IBMiMigrationRunner {
       );
       if (!migrationTableExists) {
         console.log(`📝 Creating migration table: ${tableName}`);
-        await (this.knex as any).schema.createTable(tableName, (table) => {
+        await (this.knex as any).schema.createTable(tableName, (table: any) => {
           table.increments("id").primary();
           table.string("name").unique(); // Prevent duplicate migration names
           table.integer("batch");
@@ -258,8 +258,6 @@ export class IBMiMigrationRunner {
 
     // Support multiple extensions by checking for common migration file extensions
     const validExtensions = ["js", "ts", "mjs", "cjs"];
-    const extensionToCheck = extension || "js";
-
     return fs
       .readdirSync(directory)
       .filter((file) => {

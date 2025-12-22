@@ -37,7 +37,7 @@ class IBMiSchemaCompiler extends SchemaCompiler {
     this.pushQuery({
       sql,
       bindings,
-      output: (runner: any, resp: any) => {
+      output: (_runner: unknown, resp: unknown) => {
         // Handle the response from the ODBC query
         // The first parameter is the runner, the second is the actual response
         if (!resp) {
@@ -61,11 +61,12 @@ class IBMiSchemaCompiler extends SchemaCompiler {
 
         // Handle ODBC response format with numeric keys
         if (typeof resp === "object" && resp !== null) {
+          const respObj = resp as Record<string, unknown>;
           // Check for ODBC array-like response with numeric indices
-          const keys = Object.keys(resp);
+          const keys = Object.keys(respObj);
           for (const key of keys) {
             if (!isNaN(parseInt(key))) {
-              const row = resp[key];
+              const row = respObj[key] as Record<string, unknown> | null;
               if (row && typeof row === "object") {
                 const count =
                   row.table_count ||
@@ -73,14 +74,15 @@ class IBMiSchemaCompiler extends SchemaCompiler {
                   row.count ||
                   row.COUNT ||
                   0;
-                return count > 0;
+                return (count as number) > 0;
               }
             }
           }
 
           // Handle response with rows property
-          if (resp.rows && Array.isArray(resp.rows) && resp.rows.length > 0) {
-            const firstRow = resp.rows[0];
+          const rowsObj = respObj as { rows?: unknown[] };
+          if (rowsObj.rows && Array.isArray(rowsObj.rows) && rowsObj.rows.length > 0) {
+            const firstRow = rowsObj.rows[0] as Record<string, unknown> | null;
             if (firstRow && typeof firstRow === "object") {
               const count =
                 firstRow.table_count ||
@@ -88,7 +90,7 @@ class IBMiSchemaCompiler extends SchemaCompiler {
                 firstRow.count ||
                 firstRow.COUNT ||
                 0;
-              return count > 0;
+              return (count as number) > 0;
             }
           }
         }

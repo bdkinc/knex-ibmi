@@ -57,12 +57,14 @@ class StatementCache {
   set(sql: string, stmt: any): void {
     // Remove oldest if at capacity
     if (this.cache.size >= this.maxSize) {
-      const firstKey = this.cache.keys().next().value;
-      const oldStmt = this.cache.get(firstKey);
-      this.cache.delete(firstKey);
-      // Close the evicted statement
-      if (oldStmt && typeof oldStmt.close === "function") {
-        oldStmt.close().catch(() => {});
+      const firstKey = this.cache.keys().next().value as string | undefined;
+      if (firstKey !== undefined) {
+        const oldStmt = this.cache.get(firstKey);
+        this.cache.delete(firstKey);
+        // Close the evicted statement
+        if (oldStmt && typeof oldStmt.close === "function") {
+          oldStmt.close().catch(() => {});
+        }
       }
     }
     this.cache.set(sql, stmt);
@@ -237,7 +239,7 @@ class DB2Client extends knex.Client {
     // - BLOCKFETCH: 0 (disabled)
     //
     // Reference: https://www.ibm.com/docs/en/i/7.4.0?topic=details-connection-string-keywords
-    const connectionStringParams = { ...userParams };
+    const connectionStringParams: Record<string, unknown> = { ...userParams };
 
     const connectionStringExtension = Object.keys(
       connectionStringParams,
@@ -412,7 +414,7 @@ class DB2Client extends knex.Client {
     obj: any,
   ): Promise<any> {
     const meta = obj._ibmiSequentialInsert;
-    const { rows, columns, tableName, returning, identityOnly } = meta;
+    const { rows, columns, tableName, returning } = meta;
     this.printDebug("Executing sequential multi-row insert");
     const insertedRows: any[] = [];
 
@@ -423,7 +425,7 @@ class DB2Client extends knex.Client {
       try {
         await connection.query("BEGIN");
         beganTx = true;
-      } catch (e) {
+      } catch (_e) {
         this.printWarn(
           "Could not begin transaction for sequential insert; proceeding without",
         );
@@ -800,7 +802,6 @@ class DB2Client extends knex.Client {
   }
 
   private calculateOptimalFetchSize(sql: string): number {
-    const sqlLower = sql.toLowerCase();
     const hasJoins = /\s+join\s+/i.test(sql);
     const hasAggregates = /\s+(count|sum|avg|max|min)\s*\(/i.test(sql);
     const hasOrderBy = /\s+order\s+by\s+/i.test(sql);
@@ -987,7 +988,7 @@ class DB2Client extends knex.Client {
     );
   }
 
-  private shouldRetryQuery(queryObject: any, method: string): boolean {
+  private shouldRetryQuery(queryObject: any, _method: string): boolean {
     return (
       queryObject.sql?.toLowerCase().includes("systables") ||
       queryObject.sql?.toLowerCase().includes("knex_migrations")

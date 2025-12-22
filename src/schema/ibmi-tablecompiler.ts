@@ -90,7 +90,7 @@ class IBMiTableCompiler extends TableCompiler {
     prefix = prefix || this.addColumnsPrefix;
 
     if (columns.sql.length > 0) {
-      const columnSql = columns.sql.map((column) => {
+      const columnSql = columns.sql.map((column: string) => {
         return prefix + column;
       });
       this.pushQuery({

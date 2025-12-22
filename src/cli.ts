@@ -145,7 +145,7 @@ function formatDate(): string {
   return `${year}${month}${day}${hours}${minutes}${seconds}`;
 }
 
-function getJsMigrationTemplate(migrationName: string): string {
+function getJsMigrationTemplate(_migrationName: string): string {
   return `/**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
@@ -170,7 +170,7 @@ export const down = (knex) => {
 `;
 }
 
-function getTsMigrationTemplate(migrationName: string): string {
+function getTsMigrationTemplate(_migrationName: string): string {
   return `import type { Knex } from "knex";
 
 export const up = async (knex: Knex): Promise<void> => {
@@ -344,7 +344,7 @@ async function main(): Promise<void> {
         const steps =
           parseInt(
             process.argv
-              .find((arg, i) => process.argv[i - 1] === command)
+              .find((_arg, i) => process.argv[i - 1] === command)
               ?.split(" ")[1] || "1"
           ) || 1;
         console.log(`🔄 Rolling back ${steps} migration batch(es)...`);

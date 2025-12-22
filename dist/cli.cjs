@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 "use strict";
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -217,7 +218,6 @@ var IBMiMigrationRunner = class {
       throw new Error(`Migration directory does not exist: ${directory}`);
     }
     const validExtensions = ["js", "ts", "mjs", "cjs"];
-    const extensionToCheck = extension || "js";
     return import_fs.default.readdirSync(directory).filter((file) => {
       if (extension && extension !== "js") {
         return file.endsWith(`.${extension}`);
@@ -316,7 +316,7 @@ function formatDate() {
   const seconds = String(now.getSeconds()).padStart(2, "0");
   return `${year}${month}${day}${hours}${minutes}${seconds}`;
 }
-function getJsMigrationTemplate(migrationName) {
+function getJsMigrationTemplate(_migrationName) {
   return `/**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
@@ -340,7 +340,7 @@ export const down = (knex) => {
 };
 `;
 }
-function getTsMigrationTemplate(migrationName) {
+function getTsMigrationTemplate(_migrationName) {
   return `import type { Knex } from "knex";
 
 export const up = async (knex: Knex): Promise<void> => {
@@ -466,7 +466,7 @@ async function main() {
         break;
       case "migrate:rollback":
         const steps = parseInt(
-          process.argv.find((arg, i) => process.argv[i - 1] === command)?.split(" ")[1] || "1"
+          process.argv.find((_arg, i) => process.argv[i - 1] === command)?.split(" ")[1] || "1"
         ) || 1;
         console.log(`\u{1F504} Rolling back ${steps} migration batch(es)...`);
         await migrationRunner.rollback(steps);

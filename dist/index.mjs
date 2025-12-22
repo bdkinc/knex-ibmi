@@ -38,7 +38,7 @@ var IBMiSchemaCompiler = class extends SchemaCompiler {
     this.pushQuery({
       sql,
       bindings,
-      output: (runner, resp) => {
+      output: (_runner, resp) => {
         if (!resp) {
           return false;
         }
@@ -50,18 +50,20 @@ var IBMiSchemaCompiler = class extends SchemaCompiler {
           }
         }
         if (typeof resp === "object" && resp !== null) {
-          const keys = Object.keys(resp);
+          const respObj = resp;
+          const keys = Object.keys(respObj);
           for (const key of keys) {
             if (!isNaN(parseInt(key))) {
-              const row = resp[key];
+              const row = respObj[key];
               if (row && typeof row === "object") {
                 const count = row.table_count || row.TABLE_COUNT || row.count || row.COUNT || 0;
                 return count > 0;
               }
             }
           }
-          if (resp.rows && Array.isArray(resp.rows) && resp.rows.length > 0) {
-            const firstRow = resp.rows[0];
+          const rowsObj = respObj;
+          if (rowsObj.rows && Array.isArray(rowsObj.rows) && rowsObj.rows.length > 0) {
+            const firstRow = rowsObj.rows[0];
             if (firstRow && typeof firstRow === "object") {
               const count = firstRow.table_count || firstRow.TABLE_COUNT || firstRow.count || firstRow.COUNT || 0;
               return count > 0;
@@ -403,21 +405,6 @@ var IBMiQueryCompiler = class extends QueryCompiler {
     }
     return "";
   }
-  buildFromCache(data, cachedColumns) {
-    const dataArray = Array.isArray(data) ? data : data ? [data] : [];
-    const values = [];
-    for (const item of dataArray) {
-      if (item == null) {
-        break;
-      }
-      const row = cachedColumns.map((column) => item[column] ?? void 0);
-      values.push(row);
-    }
-    return {
-      columns: cachedColumns,
-      values
-    };
-  }
   _prepInsert(data) {
     if (typeof data === "object" && data?.migration_time) {
       const parsed = new Date(data.migration_time);
@@ -733,7 +720,6 @@ var IBMiMigrationRunner = class {
       throw new Error(`Migration directory does not exist: ${directory}`);
     }
     const validExtensions = ["js", "ts", "mjs", "cjs"];
-    const extensionToCheck = extension || "js";
     return fs.readdirSync(directory).filter((file) => {
       if (extension && extension !== "js") {
         return file.endsWith(`.${extension}`);
@@ -767,11 +753,13 @@ var StatementCache = class {
   set(sql, stmt) {
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      const oldStmt = this.cache.get(firstKey);
-      this.cache.delete(firstKey);
-      if (oldStmt && typeof oldStmt.close === "function") {
-        oldStmt.close().catch(() => {
-        });
+      if (firstKey !== void 0) {
+        const oldStmt = this.cache.get(firstKey);
+        this.cache.delete(firstKey);
+        if (oldStmt && typeof oldStmt.close === "function") {
+          oldStmt.close().catch(() => {
+          });
+        }
       }
     }
     this.cache.set(sql, stmt);
@@ -1004,7 +992,7 @@ var DB2Client = class extends knex.Client {
   }
   async executeSequentialInsert(connection, obj) {
     const meta = obj._ibmiSequentialInsert;
-    const { rows, columns, tableName, returning, identityOnly } = meta;
+    const { rows, columns, tableName, returning } = meta;
     this.printDebug("Executing sequential multi-row insert");
     const insertedRows = [];
     const transactional = this.config?.ibmi?.sequentialInsertTransactional === true;
@@ -1013,7 +1001,7 @@ var DB2Client = class extends knex.Client {
       try {
         await connection.query("BEGIN");
         beganTx = true;
-      } catch (e) {
+      } catch (_e) {
         this.printWarn(
           "Could not begin transaction for sequential insert; proceeding without"
         );
@@ -1279,7 +1267,6 @@ var DB2Client = class extends knex.Client {
     });
   }
   calculateOptimalFetchSize(sql) {
-    const sqlLower = sql.toLowerCase();
     const hasJoins = /\s+join\s+/i.test(sql);
     const hasAggregates = /\s+(count|sum|avg|max|min)\s*\(/i.test(sql);
     const hasOrderBy = /\s+order\s+by\s+/i.test(sql);
@@ -1420,7 +1407,7 @@ var DB2Client = class extends knex.Client {
       `IBM i DB2 error during ${method}: ${error.message} | Context: ${contextStr}`
     );
   }
-  shouldRetryQuery(queryObject, method) {
+  shouldRetryQuery(queryObject, _method) {
     return queryObject.sql?.toLowerCase().includes("systables") || queryObject.sql?.toLowerCase().includes("knex_migrations");
   }
   async retryQuery(connection, queryObject, method) {

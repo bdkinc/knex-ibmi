@@ -1,4 +1,10 @@
 declare module "knex/lib/formatter/wrappingFormatter";
+declare module "knex/lib/formatter/wrappingFormatter.js";
+declare module "knex/lib/execution/transaction.js";
+declare module "knex/lib/query/querycompiler.js";
+declare module "knex/lib/schema/compiler.js";
+declare module "knex/lib/schema/tablecompiler.js";
+declare module "knex/lib/schema/columncompiler.js";
 
 declare module "knex/lib/execution/transaction" {
   import { EventEmitter } from "node:events";
@@ -46,8 +52,8 @@ declare module "knex/lib/query/querycompiler" {
       bindings?: any,
     );
     toSQL(
-      method,
-      tz,
+      method: string,
+      tz: string,
     ): {
       method: string;
       options: any;

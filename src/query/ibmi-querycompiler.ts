@@ -203,28 +203,6 @@ class IBMiQueryCompiler extends QueryCompiler {
     return "";
   }
 
-  private buildFromCache(
-    data: any,
-    cachedColumns: string[],
-  ): { columns: any; values: any } {
-    const dataArray = Array.isArray(data) ? data : data ? [data] : [];
-    const values: any[] = [];
-
-    // Build values array using cached column order
-    for (const item of dataArray) {
-      if (item == null) {
-        break;
-      }
-      const row = cachedColumns.map((column) => item[column] ?? undefined);
-      values.push(row);
-    }
-
-    return {
-      columns: cachedColumns,
-      values,
-    };
-  }
-
   _prepInsert(data: any): { columns: any; values: any } {
     // Handle timestamps in knex migrations
     if (typeof data === "object" && data?.migration_time) {
