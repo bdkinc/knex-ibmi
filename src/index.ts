@@ -227,6 +227,18 @@ class DB2Client extends knex.Client {
     return await connection.close();
   }
 
+  // Knex pool validation hook.
+  // If this returns false, Knex/tarn will destroy the resource and create a new one.
+  // This is critical for recovering after IBM i restarts / network drops.
+  async validateConnection(connection: any): Promise<boolean> {
+    try {
+      // node-odbc exposes `connected` getter on Connection wrapper
+      return Boolean(connection && connection.connected);
+    } catch {
+      return false;
+    }
+  }
+
   _getConnectionString(connectionConfig: DB2ConnectionConfig) {
     const userParams = connectionConfig.connectionStringParams || {};
 
@@ -322,6 +334,10 @@ class DB2Client extends knex.Client {
       const wrappedError = this.wrapError(error, method, queryObject);
 
       if (this.isConnectionError(error)) {
+        // Mark this connection as unusable so Knex/tarn destroys it.
+        // Without this, dead ODBC connections can remain in the pool indefinitely.
+        (connection as any).__knex__disposed = error;
+
         this.printError(
           `Connection error during ${method} query: ${error.message}`,
         );
@@ -784,6 +800,9 @@ class DB2Client extends knex.Client {
         },
         (error, cursor) => {
           if (error) {
+            if (this.isConnectionError(error)) {
+              (connection as any).__knex__disposed = error;
+            }
             this.printError(this.safeStringify(error, 2));
             cleanup();
             reject(error);
@@ -792,6 +811,9 @@ class DB2Client extends knex.Client {
 
           const readableStream = this._createCursorStream(cursor);
           readableStream.on("error", (err) => {
+            if (this.isConnectionError(err)) {
+              (connection as any).__knex__disposed = err;
+            }
             cleanup();
             reject(err);
           });
