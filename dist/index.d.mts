@@ -54,6 +54,7 @@ declare class DB2Client extends knex.Client {
     printWarn(message: string): void;
     acquireRawConnection(): Promise<any>;
     destroyRawConnection(connection: any): Promise<any>;
+    validateConnection(connection: any): Promise<boolean>;
     _getConnectionString(connectionConfig: DB2ConnectionConfig): string;
     _query(connection: Connection, obj: any): Promise<any>;
     /**

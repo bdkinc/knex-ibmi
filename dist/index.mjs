@@ -879,6 +879,16 @@ var DB2Client = class extends knex.Client {
     }
     return await connection.close();
   }
+  // Knex pool validation hook.
+  // If this returns false, Knex/tarn will destroy the resource and create a new one.
+  // This is critical for recovering after IBM i restarts / network drops.
+  async validateConnection(connection) {
+    try {
+      return Boolean(connection && connection.connected);
+    } catch {
+      return false;
+    }
+  }
   _getConnectionString(connectionConfig) {
     const userParams = connectionConfig.connectionStringParams || {};
     const connectionStringParams = { ...userParams };
@@ -930,6 +940,7 @@ var DB2Client = class extends knex.Client {
     } catch (error) {
       const wrappedError = this.wrapError(error, method, queryObject);
       if (this.isConnectionError(error)) {
+        connection.__knex__disposed = error;
         this.printError(
           `Connection error during ${method} query: ${error.message}`
         );
@@ -1251,6 +1262,9 @@ var DB2Client = class extends knex.Client {
         },
         (error, cursor) => {
           if (error) {
+            if (this.isConnectionError(error)) {
+              connection.__knex__disposed = error;
+            }
             this.printError(this.safeStringify(error, 2));
             cleanup();
             reject(error);
@@ -1258,6 +1272,9 @@ var DB2Client = class extends knex.Client {
           }
           const readableStream = this._createCursorStream(cursor);
           readableStream.on("error", (err) => {
+            if (this.isConnectionError(err)) {
+              connection.__knex__disposed = err;
+            }
             cleanup();
             reject(err);
           });
