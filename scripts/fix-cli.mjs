@@ -4,7 +4,7 @@
  * The tsup bundler doesn't add shebangs automatically for CJS output
  */
 
-import { readFileSync, writeFileSync } from "fs";
+import { chmodSync, readFileSync, writeFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -21,3 +21,7 @@ if (!content.startsWith("#!/")) {
 } else {
   console.log("Shebang already present in dist/cli.cjs");
 }
+
+// Ensure CLI is executable when installed via npm bin shim on POSIX systems
+chmodSync(cliPath, 0o755);
+console.log("Set executable permissions on dist/cli.cjs");

@@ -47,8 +47,8 @@ class IBMiQueryCompiler extends QueryCompiler {
     const ibmiConfig = this.client?.config?.ibmi || {};
     const multiRowStrategy = ibmiConfig.multiRowInsert || "auto"; // 'auto' | 'sequential' | 'disabled'
 
-    // When disabled, or sequential strategy with >1 rows, fall back to first row only SQL generation here.
-    // Sequential execution of additional rows is handled at runtime in the client (future enhancement).
+    // When disabled, or sequential strategy with >1 rows, fall back to first-row SQL generation here.
+    // For sequential strategy, execution of all rows is handled at runtime in the client.
     const isArrayInsert =
       Array.isArray(insertValues) && insertValues.length > 1;
     // Keep original values for sequential strategy metadata
@@ -296,6 +296,9 @@ class IBMiQueryCompiler extends QueryCompiler {
           selectColumns,
           whereClause: where,
           tableName: this.tableName,
+          setBindingCount: updates
+            .map((fragment: string) => (fragment.match(/\?/g) || []).length)
+            .reduce((sum: number, count: number) => sum + count, 0),
         },
       };
     }

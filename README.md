@@ -78,10 +78,10 @@ const db = knex({
     user: "your-username",
     password: "your-password",
     driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { 
-      ALLOWPROCCALLS: 1, 
-      CMT: 0, 
-      DBQ: "MYLIB" 
+    connectionStringParams: {
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+      DBQ: "MYLIB",
     },
   },
   pool: { min: 2, max: 10 },
@@ -91,8 +91,8 @@ const db = knex({
 db.select("*")
   .from("MYTABLE")
   .where({ STATUS: "A" })
-  .then(results => console.log(results))
-  .catch(error => console.error("Database error:", error))
+  .then((results) => console.log(results))
+  .catch((error) => console.error("Database error:", error))
   .finally(() => db.destroy());
 ```
 
@@ -111,10 +111,10 @@ const config = {
     user: "your-username",
     password: "your-password",
     driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { 
-      ALLOWPROCCALLS: 1, 
-      CMT: 0, 
-      DBQ: "MYLIB" 
+    connectionStringParams: {
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+      DBQ: "MYLIB",
     },
   },
   pool: { min: 2, max: 10 },
@@ -146,10 +146,10 @@ const config: DB2Config = {
     user: "your-username",
     password: "your-password",
     driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { 
-      ALLOWPROCCALLS: 1, 
-      CMT: 0, 
-      DBQ: "MYLIB" 
+    connectionStringParams: {
+      ALLOWPROCCALLS: 1,
+      CMT: 0,
+      DBQ: "MYLIB",
     },
   },
   pool: { min: 2, max: 10 },
@@ -177,7 +177,9 @@ import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
 import { Transform } from "node:stream";
 import { finished } from "node:stream/promises";
 
-const config: DB2Config = { /* ...same as earlier examples... */ };
+const config: DB2Config = {
+  /* ...same as earlier examples... */
+};
 const db = knex(config);
 
 try {
@@ -196,7 +198,9 @@ try {
   await finished(stream); // Wait until piping completes
 
   // Approach 2: Async iteration (recommended for simplicity)
-  const iterStream = await db("LARGETABLE").select("*").stream({ fetchSize: 200 });
+  const iterStream = await db("LARGETABLE")
+    .select("*")
+    .stream({ fetchSize: 200 });
   for await (const row of iterStream) {
     console.log("Iter row id=", row.ID);
   }
@@ -270,8 +274,8 @@ import { createIBMiMigrationRunner } from "@bdkinc/knex-ibmi";
 
 const migrationRunner = createIBMiMigrationRunner(db, {
   directory: "./migrations",
-  tableName: "KNEX_MIGRATIONS", 
-  schemaName: "MYSCHEMA"
+  tableName: "KNEX_MIGRATIONS",
+  schemaName: "MYSCHEMA",
 });
 
 // Run migrations
@@ -313,9 +317,11 @@ npm run migrate:status
 ```
 
 **Full CLI API (similar to Knex):**
+
 ```bash
 ibmi-migrations migrate:latest         # Run all pending migrations
-ibmi-migrations migrate:rollback       # Rollback last migration batch  
+ibmi-migrations migrate:rollback       # Rollback last migration batch
+ibmi-migrations migrate:rollback --steps 2
 ibmi-migrations migrate:status         # Show detailed migration status
 ibmi-migrations migrate:currentVersion # Show current migration version
 ibmi-migrations migrate:list           # List all migrations
@@ -329,6 +335,11 @@ ibmi-migrations migrate:make create_users_table
 ibmi-migrations migrate:make add_email_column -x ts            # TypeScript migration
 ```
 
+TypeScript knexfiles/migrations require running the CLI with a TypeScript-capable runtime loader
+(for example: `node --import tsx ./node_modules/.bin/ibmi-migrations ...`) or precompiling to JavaScript.
+
+Migration discovery includes `.js`, `.ts`, `.mjs`, and `.cjs` files in the migration directory.
+
 📖 **See [MIGRATIONS.md](./MIGRATIONS.md) for complete documentation**
 
 ### Alternative: Standard Knex with Transactions Disabled
@@ -339,11 +350,13 @@ If you must use standard Knex migrations, disable transactions to avoid issues:
 /** @type {import("@bdkinc/knex-ibmi").DB2Config} */
 const config = {
   client: DB2Dialect,
-  connection: { /* your connection config */ },
+  connection: {
+    /* your connection config */
+  },
   migrations: {
     disableTransactions: true, // Required for IBM i
-    directory: './migrations',
-    tableName: 'knex_migrations',
+    directory: "./migrations",
+    tableName: "knex_migrations",
   },
 };
 ```
@@ -357,8 +370,10 @@ Configure via `ibmi.multiRowInsert` in the knex config:
 ```ts
 const db = knex({
   client: DB2Dialect,
-  connection: { /* ... */ },
-  ibmi: { multiRowInsert: 'auto' } // 'auto' | 'sequential' | 'disabled'
+  connection: {
+    /* ... */
+  },
+  ibmi: { multiRowInsert: "auto" }, // 'auto' | 'sequential' | 'disabled'
 });
 ```
 
@@ -373,20 +388,24 @@ If you specify `.returning(['COL1', 'COL2'])` with multi-row inserts, those colu
 Native `RETURNING` is not broadly supported over ODBC on IBM i. The dialect provides pragmatic emulation:
 
 ### INSERT
+
 - `auto` multi-row: generates a single multi-values INSERT. When no explicit column list is requested it returns all inserted rows (`*`) as a lenient fallback. Some installations may see this internally wrapped using a `SELECT * FROM FINAL TABLE( INSERT ... )` pattern in logs or debug output; that wrapper is only an implementation detail to surface inserted rows.
 - `sequential`: inserts each row one at a time so it can reliably call `IDENTITY_VAL_LOCAL()` after each insert; builds an array of returned rows.
 - `disabled`: legacy single-row insert behavior; additional rows in the values array are ignored.
 
 ### UPDATE
+
 - Executes the UPDATE.
 - Re-selects the affected rows using the original WHERE clause when `.returning(...)` is requested.
 
 ### DELETE
+
 - Selects the rows to be deleted (capturing requested returning columns or `*`).
 - Executes the DELETE.
 - Returns the previously selected rows.
 
 ### Notes
+
 - `returning('*')` can be expensive on large result sets—limit the column list when possible.
 - For guaranteed, ordered identity values across many inserted rows use the `sequential` strategy.
 
@@ -394,7 +413,7 @@ Native `RETURNING` is not broadly supported over ODBC on IBM i. The dialect prov
 
 ```ts
 interface IbmiDialectConfig {
-  multiRowInsert?: 'auto' | 'sequential' | 'disabled';
+  multiRowInsert?: "auto" | "sequential" | "disabled";
   sequentialInsertTransactional?: boolean; // if true, wraps sequential loop in BEGIN/COMMIT
   preparedStatementCache?: boolean; // Enable per-connection statement caching (default: false)
   preparedStatementCacheSize?: number; // Max cached statements per connection (default: 100)
@@ -413,11 +432,13 @@ Enable optional prepared statement caching to reduce parse overhead for repeated
 ```ts
 const db = knex({
   client: DB2Dialect,
-  connection: { /* ... */ },
+  connection: {
+    /* ... */
+  },
   ibmi: {
-    preparedStatementCache: true,        // Enable caching
-    preparedStatementCacheSize: 100,     // Max statements per connection
-  }
+    preparedStatementCache: true, // Enable caching
+    preparedStatementCacheSize: 100, // Max statements per connection
+  },
 });
 ```
 
@@ -430,10 +451,12 @@ For read-heavy workloads, enable uncommitted read isolation to improve concurren
 ```ts
 const db = knex({
   client: DB2Dialect,
-  connection: { /* ... */ },
+  connection: {
+    /* ... */
+  },
   ibmi: {
-    readUncommitted: true  // Appends WITH UR to all SELECT queries
-  }
+    readUncommitted: true, // Appends WITH UR to all SELECT queries
+  },
 });
 ```
 

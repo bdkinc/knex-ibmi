@@ -36,6 +36,9 @@ var import_fs2 = require("fs");
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 var import_url = require("url");
+function buildTsRuntimeHelpMessage(fileName) {
+  return `TypeScript migration '${fileName}' requires a TypeScript runtime loader. Run with a TS-capable runtime (for example: \`node --import tsx\`) or precompile migrations to JavaScript.`;
+}
 var IBMiMigrationRunner = class {
   constructor(knex2, config) {
     __publicField(this, "knex");
@@ -45,9 +48,13 @@ var IBMiMigrationRunner = class {
       directory: "./migrations",
       tableName: "KNEX_MIGRATIONS",
       schemaName: void 0,
-      extension: "js",
       ...config
     };
+    if (typeof config?.extension === "string") {
+      console.warn(
+        "\u26A0\uFE0F IBMiMigrationRunner config 'extension' is ignored for discovery. The runner always discovers .js/.ts/.mjs/.cjs migration files."
+      );
+    }
   }
   getFullTableName() {
     return this.config.schemaName ? `${this.config.schemaName}.${this.config.tableName}` : this.config.tableName;
@@ -94,7 +101,18 @@ var IBMiMigrationRunner = class {
         try {
           const migrationPath = this.getMigrationPath(migrationFile);
           const fileUrl = (0, import_url.pathToFileURL)(migrationPath).href;
-          const migration = await import(`${fileUrl}?t=${Date.now()}`);
+          let migration;
+          try {
+            const moduleNs = await import(`${fileUrl}?t=${Date.now()}`);
+            migration = moduleNs.default ?? moduleNs;
+          } catch (importError) {
+            const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
+            const message = String(importError?.message || importError || "");
+            if (isTsMigration && (message.includes("Unknown file extension") || message.includes("Cannot use import statement") || message.includes("Unexpected token"))) {
+              throw new Error(buildTsRuntimeHelpMessage(migrationFile));
+            }
+            throw importError;
+          }
           if (!migration.up || typeof migration.up !== "function") {
             throw new Error(`Migration ${migrationFile} has no 'up' function`);
           }
@@ -142,7 +160,18 @@ var IBMiMigrationRunner = class {
         try {
           const migrationPath = this.getMigrationPath(migrationFile);
           const fileUrl = (0, import_url.pathToFileURL)(migrationPath).href;
-          const migration = await import(`${fileUrl}?t=${Date.now()}`);
+          let migration;
+          try {
+            const moduleNs = await import(`${fileUrl}?t=${Date.now()}`);
+            migration = moduleNs.default ?? moduleNs;
+          } catch (importError) {
+            const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
+            const message = String(importError?.message || importError || "");
+            if (isTsMigration && (message.includes("Unknown file extension") || message.includes("Cannot use import statement") || message.includes("Unexpected token"))) {
+              throw new Error(buildTsRuntimeHelpMessage(migrationFile));
+            }
+            throw importError;
+          }
           if (migration.down && typeof migration.down === "function") {
             console.log(`  \u26A1 Executing rollback...`);
             await migration.down(this.knex);
@@ -213,17 +242,12 @@ var IBMiMigrationRunner = class {
     }
   }
   getMigrationFiles() {
-    const { directory, extension } = this.config;
+    const { directory } = this.config;
     if (!import_fs.default.existsSync(directory)) {
       throw new Error(`Migration directory does not exist: ${directory}`);
     }
     const validExtensions = ["js", "ts", "mjs", "cjs"];
-    return import_fs.default.readdirSync(directory).filter((file) => {
-      if (extension && extension !== "js") {
-        return file.endsWith(`.${extension}`);
-      }
-      return validExtensions.some((ext) => file.endsWith(`.${ext}`));
-    }).sort();
+    return import_fs.default.readdirSync(directory).filter((file) => validExtensions.some((ext) => file.endsWith(`.${ext}`))).sort();
   }
   getMigrationPath(filename) {
     return import_path.default.resolve(this.config.directory, filename);
@@ -258,17 +282,19 @@ function showHelp() {
   console.log(
     "  --knexfile <file>      - Specify knexfile path (default: ./knexfile.js)"
   );
-  console.log(
-    "                         - Supports both .js and .ts knexfiles"
-  );
+  console.log("                         - Supports both .js and .ts knexfiles");
   console.log(
     "  -x <extension>         - File extension for new migrations (js|ts)"
+  );
+  console.log(
+    "  --steps <number>       - Number of migration batches to rollback"
   );
   console.log("  --help                 - Show this help message");
   console.log("");
   console.log("Examples:");
   console.log("  ibmi-migrations migrate:latest");
   console.log("  ibmi-migrations migrate:rollback");
+  console.log("  ibmi-migrations migrate:rollback --steps 2");
   console.log("  ibmi-migrations migrate:status --env production");
   console.log("  ibmi-migrations migrate:latest --knexfile knexfile.ts");
   console.log("  ibmi-migrations migrate:make create_users_table");
@@ -283,6 +309,7 @@ function parseArgs() {
     knexfile: "./knexfile.js",
     help: false,
     extension: "js",
+    steps: 1,
     migrationName: null
   };
   for (let i = 0; i < args.length; i++) {
@@ -298,8 +325,16 @@ function parseArgs() {
     } else if (arg === "-x" && args[i + 1]) {
       parsed.extension = args[i + 1];
       i++;
+    } else if ((arg === "--steps" || arg === "-s") && args[i + 1]) {
+      const parsedSteps = Number.parseInt(args[i + 1], 10);
+      if (!Number.isNaN(parsedSteps) && parsedSteps > 0) {
+        parsed.steps = parsedSteps;
+      }
+      i++;
     } else if (!parsed.command) {
       parsed.command = arg;
+    } else if (parsed.command === "migrate:rollback" && /^\d+$/.test(arg) && parsed.steps === 1) {
+      parsed.steps = Number.parseInt(arg, 10);
     } else if (parsed.command === "migrate:make" && !parsed.migrationName) {
       parsed.migrationName = arg;
     }
@@ -385,6 +420,14 @@ async function loadKnexfile(knexfilePath, environment) {
     return envConfig;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const tsFile = knexfilePath.toLowerCase().endsWith(".ts");
+    if (tsFile && (message.includes("Unknown file extension") || message.includes("Cannot use import statement") || message.includes("Unexpected token"))) {
+      console.error("\u274C Failed to load TypeScript knexfile:", knexfilePath);
+      console.error(
+        "Run with a TS-capable runtime loader (for example: `node --import tsx`) or use a compiled JavaScript knexfile."
+      );
+      process.exit(1);
+    }
     console.error("\u274C Failed to load knexfile:", message);
     console.error(`Make sure you have a valid knexfile at: ${knexfilePath}`);
     process.exit(1);
@@ -455,8 +498,7 @@ async function main() {
     const migrationConfig = {
       directory: config.migrations?.directory || "./migrations",
       tableName: config.migrations?.tableName || "KNEX_MIGRATIONS",
-      schemaName: config.migrations?.schemaName,
-      extension: config.migrations?.extension || "js"
+      schemaName: config.migrations?.schemaName
     };
     const migrationRunner = createIBMiMigrationRunner(db, migrationConfig);
     switch (command) {
@@ -465,11 +507,8 @@ async function main() {
         await migrationRunner.latest();
         break;
       case "migrate:rollback":
-        const steps = parseInt(
-          process.argv.find((_arg, i) => process.argv[i - 1] === command)?.split(" ")[1] || "1"
-        ) || 1;
-        console.log(`\u{1F504} Rolling back ${steps} migration batch(es)...`);
-        await migrationRunner.rollback(steps);
+        console.log(`\u{1F504} Rolling back ${args.steps} migration batch(es)...`);
+        await migrationRunner.rollback(args.steps);
         break;
       case "migrate:status":
         console.log("\u{1F4CB} Migration Status Report");

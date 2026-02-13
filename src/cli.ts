@@ -21,11 +21,13 @@
  *   --env <environment>     - Specify environment (default: development)
  *   --knexfile <file>       - Specify knexfile path (supports .js and .ts)
  *   -x <extension>          - File extension for new migrations (js|ts)
+ *   --steps <number>        - Rollback this many migration batches
  *   --help                  - Show this help message
  *
  * TypeScript Support:
- *   The CLI fully supports TypeScript knexfiles and migrations.
- *   Use --knexfile knexfile.ts to load a TypeScript configuration.
+ *   The CLI can load TypeScript knexfiles and migrations when running under a
+ *   TS-capable runtime (for example, Node with tsx import hook).
+ *   Use --knexfile knexfile.ts to target a TypeScript configuration.
  *   Use -x ts when creating migrations to generate TypeScript files.
  */
 
@@ -44,6 +46,7 @@ interface ParsedArgs {
   knexfile: string;
   help: boolean;
   extension: string;
+  steps: number;
   migrationName: string | null;
 }
 
@@ -75,22 +78,24 @@ function showHelp(): void {
   console.log("");
   console.log("Options:");
   console.log(
-    "  --env <environment>    - Specify environment (default: development)"
+    "  --env <environment>    - Specify environment (default: development)",
   );
   console.log(
-    "  --knexfile <file>      - Specify knexfile path (default: ./knexfile.js)"
+    "  --knexfile <file>      - Specify knexfile path (default: ./knexfile.js)",
+  );
+  console.log("                         - Supports both .js and .ts knexfiles");
+  console.log(
+    "  -x <extension>         - File extension for new migrations (js|ts)",
   );
   console.log(
-    "                         - Supports both .js and .ts knexfiles"
-  );
-  console.log(
-    "  -x <extension>         - File extension for new migrations (js|ts)"
+    "  --steps <number>       - Number of migration batches to rollback",
   );
   console.log("  --help                 - Show this help message");
   console.log("");
   console.log("Examples:");
   console.log("  ibmi-migrations migrate:latest");
   console.log("  ibmi-migrations migrate:rollback");
+  console.log("  ibmi-migrations migrate:rollback --steps 2");
   console.log("  ibmi-migrations migrate:status --env production");
   console.log("  ibmi-migrations migrate:latest --knexfile knexfile.ts");
   console.log("  ibmi-migrations migrate:make create_users_table");
@@ -106,6 +111,7 @@ function parseArgs(): ParsedArgs {
     knexfile: "./knexfile.js",
     help: false,
     extension: "js",
+    steps: 1,
     migrationName: null,
   };
 
@@ -123,8 +129,21 @@ function parseArgs(): ParsedArgs {
     } else if (arg === "-x" && args[i + 1]) {
       parsed.extension = args[i + 1];
       i++; // Skip next arg
+    } else if ((arg === "--steps" || arg === "-s") && args[i + 1]) {
+      const parsedSteps = Number.parseInt(args[i + 1], 10);
+      if (!Number.isNaN(parsedSteps) && parsedSteps > 0) {
+        parsed.steps = parsedSteps;
+      }
+      i++; // Skip next arg
     } else if (!parsed.command) {
       parsed.command = arg;
+    } else if (
+      parsed.command === "migrate:rollback" &&
+      /^\d+$/.test(arg) &&
+      parsed.steps === 1
+    ) {
+      // Backward-compatible positional rollback steps: `migrate:rollback 2`
+      parsed.steps = Number.parseInt(arg, 10);
     } else if (parsed.command === "migrate:make" && !parsed.migrationName) {
       parsed.migrationName = arg;
     }
@@ -192,7 +211,7 @@ export const down = async (knex: Knex): Promise<void> => {
 function createMigrationFile(
   migrationName: string,
   directory: string,
-  extension: string
+  extension: string,
 ): string {
   // Ensure migrations directory exists
   if (!existsSync(directory)) {
@@ -215,7 +234,7 @@ function createMigrationFile(
 
 async function loadKnexfile(
   knexfilePath: string,
-  environment: string
+  environment: string,
 ): Promise<KnexfileConfig> {
   try {
     const fullPath = resolve(process.cwd(), knexfilePath);
@@ -240,6 +259,20 @@ async function loadKnexfile(
     return envConfig as KnexfileConfig;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const tsFile = knexfilePath.toLowerCase().endsWith(".ts");
+    if (
+      tsFile &&
+      (message.includes("Unknown file extension") ||
+        message.includes("Cannot use import statement") ||
+        message.includes("Unexpected token"))
+    ) {
+      console.error("❌ Failed to load TypeScript knexfile:", knexfilePath);
+      console.error(
+        "Run with a TS-capable runtime loader (for example: `node --import tsx`) or use a compiled JavaScript knexfile.",
+      );
+      process.exit(1);
+    }
+
     console.error("❌ Failed to load knexfile:", message);
     console.error(`Make sure you have a valid knexfile at: ${knexfilePath}`);
     process.exit(1);
@@ -308,7 +341,7 @@ async function main(): Promise<void> {
       const filePath = createMigrationFile(
         args.migrationName,
         migrationDir,
-        args.extension
+        args.extension,
       );
 
       console.log(`✅ Created migration file: ${filePath}`);
@@ -329,7 +362,6 @@ async function main(): Promise<void> {
       directory: config.migrations?.directory || "./migrations",
       tableName: config.migrations?.tableName || "KNEX_MIGRATIONS",
       schemaName: config.migrations?.schemaName,
-      extension: config.migrations?.extension || "js",
     };
 
     const migrationRunner = createIBMiMigrationRunner(db, migrationConfig);
@@ -341,14 +373,8 @@ async function main(): Promise<void> {
         break;
 
       case "migrate:rollback":
-        const steps =
-          parseInt(
-            process.argv
-              .find((_arg, i) => process.argv[i - 1] === command)
-              ?.split(" ")[1] || "1"
-          ) || 1;
-        console.log(`🔄 Rolling back ${steps} migration batch(es)...`);
-        await migrationRunner.rollback(steps);
+        console.log(`🔄 Rolling back ${args.steps} migration batch(es)...`);
+        await migrationRunner.rollback(args.steps);
         break;
 
       case "migrate:status":
@@ -422,7 +448,7 @@ async function main(): Promise<void> {
 main().catch((error) => {
   console.error(
     "❌ CLI failed:",
-    error instanceof Error ? error.message : String(error)
+    error instanceof Error ? error.message : String(error),
   );
   process.exit(1);
 });

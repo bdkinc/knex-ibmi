@@ -5,6 +5,10 @@ interface IBMiMigrationConfig {
     directory: string;
     tableName: string;
     schemaName?: string;
+    /**
+     * Deprecated for runner discovery. Kept for backward compatibility.
+     * The runner discovers .js/.ts/.mjs/.cjs migrations regardless of this value.
+     */
     extension?: string;
 }
 declare class IBMiMigrationRunner {
