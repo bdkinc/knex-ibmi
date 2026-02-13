@@ -290,7 +290,7 @@ export default {
       directory: "./migrations", // Migration files directory
       tableName: "KNEX_MIGRATIONS", // Migration tracking table name
       schemaName: "MYSCHEMA", // Schema/library name (optional)
-      extension: "js", // Default extension for new migrations
+      extension: "js", // Optional: used for migration creation defaults
     },
   },
 };
@@ -326,7 +326,7 @@ const config: KnexConfig = {
       directory: "./migrations",
       tableName: "KNEX_MIGRATIONS",
       schemaName: "MYSCHEMA",
-      extension: "ts", // Default extension for new migrations
+      extension: "ts", // Optional: used for migration creation defaults
     },
   },
 };
@@ -341,7 +341,7 @@ export default config;
 - `schemaName`: IBM i schema/library name (optional)
 - `extension`: Default file extension for new migrations (`"js"` or `"ts"`, default: `"js"`)
 
-**Note:** The CLI can create both JavaScript and TypeScript migrations regardless of the `extension` setting by using the `-x` flag.
+**Note:** `extension` affects migration file creation defaults. Migration discovery always includes `.js`, `.ts`, `.mjs`, and `.cjs` files.
 
 ## Why Not Use Standard Knex Migrations?
 
@@ -374,9 +374,9 @@ npm install -g @bdkinc/knex-ibmi
 
 The migration system detects `.js`, `.ts`, `.mjs`, and `.cjs` files. If you're not seeing TypeScript migrations:
 
-1. Make sure your `knexfile.js` doesn't have a restrictive `extension` setting
-2. Check that the migration files are in the correct directory
-3. Use `migrate:list` to see all detected migrations
+1. Check that the migration files are in the correct directory
+2. Use `migrate:list` to see all detected migrations
+3. Ensure you are running with a TS-capable runtime loader when executing `.ts` migrations
 
 ### Connection Issues
 

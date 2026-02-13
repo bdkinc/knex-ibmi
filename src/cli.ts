@@ -362,7 +362,6 @@ async function main(): Promise<void> {
       directory: config.migrations?.directory || "./migrations",
       tableName: config.migrations?.tableName || "KNEX_MIGRATIONS",
       schemaName: config.migrations?.schemaName,
-      extension: config.migrations?.extension || "js",
     };
 
     const migrationRunner = createIBMiMigrationRunner(db, migrationConfig);

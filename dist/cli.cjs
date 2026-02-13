@@ -48,9 +48,13 @@ var IBMiMigrationRunner = class {
       directory: "./migrations",
       tableName: "KNEX_MIGRATIONS",
       schemaName: void 0,
-      extension: "js",
       ...config
     };
+    if (typeof config?.extension === "string") {
+      console.warn(
+        "\u26A0\uFE0F IBMiMigrationRunner config 'extension' is ignored for discovery. The runner always discovers .js/.ts/.mjs/.cjs migration files."
+      );
+    }
   }
   getFullTableName() {
     return this.config.schemaName ? `${this.config.schemaName}.${this.config.tableName}` : this.config.tableName;
@@ -99,7 +103,8 @@ var IBMiMigrationRunner = class {
           const fileUrl = (0, import_url.pathToFileURL)(migrationPath).href;
           let migration;
           try {
-            migration = await import(`${fileUrl}?t=${Date.now()}`);
+            const moduleNs = await import(`${fileUrl}?t=${Date.now()}`);
+            migration = moduleNs.default ?? moduleNs;
           } catch (importError) {
             const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
             const message = String(importError?.message || importError || "");
@@ -157,7 +162,8 @@ var IBMiMigrationRunner = class {
           const fileUrl = (0, import_url.pathToFileURL)(migrationPath).href;
           let migration;
           try {
-            migration = await import(`${fileUrl}?t=${Date.now()}`);
+            const moduleNs = await import(`${fileUrl}?t=${Date.now()}`);
+            migration = moduleNs.default ?? moduleNs;
           } catch (importError) {
             const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
             const message = String(importError?.message || importError || "");
@@ -492,8 +498,7 @@ async function main() {
     const migrationConfig = {
       directory: config.migrations?.directory || "./migrations",
       tableName: config.migrations?.tableName || "KNEX_MIGRATIONS",
-      schemaName: config.migrations?.schemaName,
-      extension: config.migrations?.extension || "js"
+      schemaName: config.migrations?.schemaName
     };
     const migrationRunner = createIBMiMigrationRunner(db, migrationConfig);
     switch (command) {

@@ -7,6 +7,10 @@ export interface IBMiMigrationConfig {
   directory: string;
   tableName: string;
   schemaName?: string;
+  /**
+   * Deprecated for runner discovery. Kept for backward compatibility.
+   * The runner discovers .js/.ts/.mjs/.cjs migrations regardless of this value.
+   */
   extension?: string;
 }
 
@@ -29,9 +33,15 @@ export class IBMiMigrationRunner {
       directory: "./migrations",
       tableName: "KNEX_MIGRATIONS",
       schemaName: undefined,
-      extension: "js",
       ...config,
     };
+
+    if (typeof config?.extension === "string") {
+      console.warn(
+        "⚠️ IBMiMigrationRunner config 'extension' is ignored for discovery. " +
+          "The runner always discovers .js/.ts/.mjs/.cjs migration files.",
+      );
+    }
   }
 
   private getFullTableName(): string {
@@ -100,7 +110,8 @@ export class IBMiMigrationRunner {
           const fileUrl = pathToFileURL(migrationPath).href;
           let migration: any;
           try {
-            migration = await import(`${fileUrl}?t=${Date.now()}`);
+            const moduleNs = await import(`${fileUrl}?t=${Date.now()}`);
+            migration = moduleNs.default ?? moduleNs;
           } catch (importError: any) {
             const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
             const message = String(importError?.message || importError || "");
@@ -187,7 +198,8 @@ export class IBMiMigrationRunner {
           const fileUrl = pathToFileURL(migrationPath).href;
           let migration: any;
           try {
-            migration = await import(`${fileUrl}?t=${Date.now()}`);
+            const moduleNs = await import(`${fileUrl}?t=${Date.now()}`);
+            migration = moduleNs.default ?? moduleNs;
           } catch (importError: any) {
             const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
             const message = String(importError?.message || importError || "");
