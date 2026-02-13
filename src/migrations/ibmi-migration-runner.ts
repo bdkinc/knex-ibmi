@@ -10,6 +10,13 @@ export interface IBMiMigrationConfig {
   extension?: string;
 }
 
+function buildTsRuntimeHelpMessage(fileName: string): string {
+  return (
+    `TypeScript migration '${fileName}' requires a TypeScript runtime loader. ` +
+    "Run with a TS-capable runtime (for example: `node --import tsx`) or precompile migrations to JavaScript."
+  );
+}
+
 export class IBMiMigrationRunner {
   private knex: Knex;
   private config: IBMiMigrationConfig;
@@ -91,7 +98,22 @@ export class IBMiMigrationRunner {
           // Import the migration with cache busting to ensure fresh imports
           const migrationPath = this.getMigrationPath(migrationFile);
           const fileUrl = pathToFileURL(migrationPath).href;
-          const migration = await import(`${fileUrl}?t=${Date.now()}`);
+          let migration: any;
+          try {
+            migration = await import(`${fileUrl}?t=${Date.now()}`);
+          } catch (importError: any) {
+            const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
+            const message = String(importError?.message || importError || "");
+            if (
+              isTsMigration &&
+              (message.includes("Unknown file extension") ||
+                message.includes("Cannot use import statement") ||
+                message.includes("Unexpected token"))
+            ) {
+              throw new Error(buildTsRuntimeHelpMessage(migrationFile));
+            }
+            throw importError;
+          }
 
           if (!migration.up || typeof migration.up !== "function") {
             throw new Error(`Migration ${migrationFile} has no 'up' function`);
@@ -163,7 +185,22 @@ export class IBMiMigrationRunner {
           // Import the migration with cache busting to ensure fresh imports
           const migrationPath = this.getMigrationPath(migrationFile);
           const fileUrl = pathToFileURL(migrationPath).href;
-          const migration = await import(`${fileUrl}?t=${Date.now()}`);
+          let migration: any;
+          try {
+            migration = await import(`${fileUrl}?t=${Date.now()}`);
+          } catch (importError: any) {
+            const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
+            const message = String(importError?.message || importError || "");
+            if (
+              isTsMigration &&
+              (message.includes("Unknown file extension") ||
+                message.includes("Cannot use import statement") ||
+                message.includes("Unexpected token"))
+            ) {
+              throw new Error(buildTsRuntimeHelpMessage(migrationFile));
+            }
+            throw importError;
+          }
 
           if (migration.down && typeof migration.down === "function") {
             console.log(`  ⚡ Executing rollback...`);
@@ -250,7 +287,7 @@ export class IBMiMigrationRunner {
   }
 
   private getMigrationFiles(): string[] {
-    const { directory, extension } = this.config;
+    const { directory } = this.config;
 
     if (!fs.existsSync(directory)) {
       throw new Error(`Migration directory does not exist: ${directory}`);
@@ -260,14 +297,7 @@ export class IBMiMigrationRunner {
     const validExtensions = ["js", "ts", "mjs", "cjs"];
     return fs
       .readdirSync(directory)
-      .filter((file) => {
-        // If a specific extension is configured, use only that
-        if (extension && extension !== "js") {
-          return file.endsWith(`.${extension}`);
-        }
-        // Otherwise, check for any valid migration extension
-        return validExtensions.some((ext) => file.endsWith(`.${ext}`));
-      })
+      .filter((file) => validExtensions.some((ext) => file.endsWith(`.${ext}`)))
       .sort();
   }
 

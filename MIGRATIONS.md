@@ -19,15 +19,15 @@ const db = knex({
   migrations: {
     directory: "./migrations",
     tableName: "KNEX_MIGRATIONS",
-    schemaName: "MYSCHEMA"
-  }
+    schemaName: "MYSCHEMA",
+  },
 });
 
 // Create migration runner
 const migrationRunner = createIBMiMigrationRunner(db, {
   directory: "./migrations",
   tableName: "KNEX_MIGRATIONS",
-  schemaName: "MYSCHEMA"
+  schemaName: "MYSCHEMA",
 });
 
 // Run latest migrations
@@ -76,9 +76,11 @@ npm run migrate:status
 ```
 
 **Full CLI API:**
+
 ```bash
 ibmi-migrations migrate:latest         # Run all pending migrations
-ibmi-migrations migrate:rollback       # Rollback last migration batch  
+ibmi-migrations migrate:rollback       # Rollback last migration batch
+ibmi-migrations migrate:rollback --steps 2
 ibmi-migrations migrate:status         # Show detailed migration status
 ibmi-migrations migrate:currentVersion # Show current migration version
 ibmi-migrations migrate:list           # List all migrations
@@ -91,6 +93,7 @@ ibmi-migrations status                 # Same as migrate:status
 
 # Options:
 ibmi-migrations migrate:status --env production
+ibmi-migrations migrate:rollback --steps 3
 ibmi-migrations migrate:latest --knexfile ./config/knexfile.js
 ibmi-migrations migrate:latest --knexfile ./knexfile.ts        # Use TypeScript knexfile
 ibmi-migrations migrate:make create_users_table
@@ -99,18 +102,19 @@ ibmi-migrations migrate:make add_email_column -x ts            # TypeScript migr
 
 ## TypeScript Support
 
-The ibmi-migrations CLI has full support for TypeScript projects:
+The ibmi-migrations CLI can load TypeScript knexfiles/migrations when running under a
+TypeScript-capable runtime loader (for example, Node with `tsx` import hook):
 
 ### Using TypeScript Knexfiles
 
-The CLI can automatically load and use TypeScript knexfiles (`.ts` extension):
+The CLI can load TypeScript knexfiles (`.ts` extension):
 
 ```bash
 # Explicitly specify a TypeScript knexfile
 npx ibmi-migrations migrate:latest --knexfile knexfile.ts
 npx ibmi-migrations migrate:status --knexfile ./config/knexfile.ts
 
-# The CLI automatically detects and loads .ts files
+# Requires a TS runtime loader (for example: node --import tsx)
 ```
 
 ### Creating TypeScript Migrations
@@ -126,7 +130,7 @@ npx ibmi-migrations migrate:make create_users_table -x ts
 
 ### Running TypeScript Migrations
 
-The migration runner automatically detects and runs both `.js` and `.ts` migration files:
+The migration runner detects and runs `.js`, `.ts`, `.mjs`, and `.cjs` migration files:
 
 ```bash
 # This will run both JS and TS migrations in the correct order
@@ -148,31 +152,35 @@ npx ibmi-migrations migrate:latest --knexfile knexfile.ts
 npx ibmi-migrations migrate:status --knexfile knexfile.ts
 ```
 
-**Note:** The CLI uses dynamic imports to load TypeScript files directly, so no separate build step is required for your knexfile or migrations.
+**Note:** If Node is not running with a TS runtime loader, `.ts` knexfiles/migrations will fail to load. In that case, run with a TS loader or precompile migrations to JavaScript.
 
 ## CLI Features
 
 The built-in CLI provides a complete migration management experience:
 
 ### Migration Management
+
 - **`migrate:latest`**: Run all pending migrations
-- **`migrate:rollback`**: Rollback the last batch of migrations
+- **`migrate:rollback`**: Rollback the last batch of migrations (use `--steps <n>` for multiple batches)
 - **`migrate:status`**: Show detailed migration status with executed/pending lists
 - **`migrate:currentVersion`**: Display the current migration version
 - **`migrate:list`**: List all available migrations
 
 ### Migration Creation
+
 - **`migrate:make <name>`**: Create new migration files with proper timestamps
 - **TypeScript Support**: Use `-x ts` to create TypeScript migration files
 - **Smart Templates**: Generates properly formatted templates with helpful examples
 - **Mixed Extensions**: Supports both `.js` and `.ts` migrations in the same project
 
 ### Environment Management
+
 - **Multi-environment**: Use `--env` to target different environments
 - **Custom Knexfiles**: Use `--knexfile` to specify custom configuration files
 - **Package.json Integration**: Add scripts for easy team usage
 
 ### Example Workflow
+
 ```bash
 # Create a new migration
 npx ibmi-migrations migrate:make create_users_table
@@ -202,6 +210,7 @@ npx ibmi-migrations migrate:rollback
 Your migration files work exactly the same as standard Knex migrations. You can use either JavaScript or TypeScript:
 
 ### JavaScript Migration
+
 ```javascript
 // 20231214_create_users_table.js
 
@@ -210,10 +219,10 @@ Your migration files work exactly the same as standard Knex migrations. You can 
  * @returns { Promise<void> }
  */
 export const up = (knex) => {
-  return knex.schema.createTable('users', (table) => {
-    table.increments('id').primary();
-    table.string('name').notNullable();
-    table.string('email').unique();
+  return knex.schema.createTable("users", (table) => {
+    table.increments("id").primary();
+    table.string("name").notNullable();
+    table.string("email").unique();
     table.timestamps(true, true);
   });
 };
@@ -223,32 +232,34 @@ export const up = (knex) => {
  * @returns { Promise<void> }
  */
 export const down = (knex) => {
-  return knex.schema.dropTable('users');
+  return knex.schema.dropTable("users");
 };
 ```
 
 ### TypeScript Migration
+
 ```typescript
 // 20231214_add_user_profile.ts
 
 import { Knex } from "knex";
 
 export const up = async (knex: Knex): Promise<void> => {
-  return knex.schema.alterTable('users', (table) => {
-    table.text('profile').nullable();
-    table.timestamp('last_login').nullable();
+  return knex.schema.alterTable("users", (table) => {
+    table.text("profile").nullable();
+    table.timestamp("last_login").nullable();
   });
 };
 
 export const down = async (knex: Knex): Promise<void> => {
-  return knex.schema.alterTable('users', (table) => {
-    table.dropColumn('profile');
-    table.dropColumn('last_login');
+  return knex.schema.alterTable("users", (table) => {
+    table.dropColumn("profile");
+    table.dropColumn("last_login");
   });
 };
 ```
 
 ### Creating Migration Files
+
 Use the CLI to generate properly formatted migration files:
 
 ```bash
@@ -264,6 +275,7 @@ npx ibmi-migrations migrate:make add_user_profile -x ts
 The migration runner accepts the same configuration as Knex migrations. Configure these in your `knexfile.js` or `knexfile.ts`:
 
 ### JavaScript Configuration
+
 ```javascript
 // knexfile.js
 import { DB2Dialect } from "@bdkinc/knex-ibmi";
@@ -275,16 +287,17 @@ export default {
       // your connection config
     },
     migrations: {
-      directory: "./migrations",      // Migration files directory
-      tableName: "KNEX_MIGRATIONS",  // Migration tracking table name
-      schemaName: "MYSCHEMA",        // Schema/library name (optional)
-      extension: "js"                // Default extension for new migrations
-    }
-  }
+      directory: "./migrations", // Migration files directory
+      tableName: "KNEX_MIGRATIONS", // Migration tracking table name
+      schemaName: "MYSCHEMA", // Schema/library name (optional)
+      extension: "js", // Default extension for new migrations
+    },
+  },
 };
 ```
 
 ### TypeScript Configuration
+
 ```typescript
 // knexfile.ts
 import { DB2Dialect } from "@bdkinc/knex-ibmi";
@@ -306,22 +319,23 @@ const config: KnexConfig = {
       connectionStringParams: {
         ALLOWPROCCALLS: 1,
         CMT: 0,
-        DBQ: "MYLIB"
-      }
+        DBQ: "MYLIB",
+      },
     },
     migrations: {
       directory: "./migrations",
       tableName: "KNEX_MIGRATIONS",
       schemaName: "MYSCHEMA",
-      extension: "ts"                // Default extension for new migrations
-    }
-  }
+      extension: "ts", // Default extension for new migrations
+    },
+  },
 };
 
 export default config;
 ```
 
 **Configuration Options:**
+
 - `directory`: Where migration files are stored (default: `"./migrations"`)
 - `tableName`: Database table to track migrations (default: `"KNEX_MIGRATIONS"`)
 - `schemaName`: IBM i schema/library name (optional)
@@ -342,6 +356,7 @@ The built-in IBM i migration system is specifically designed to work around thes
 ## Troubleshooting
 
 ### CLI Not Found
+
 If you get "command not found" errors:
 
 ```bash
@@ -356,13 +371,15 @@ npm install -g @bdkinc/knex-ibmi
 ```
 
 ### Mixed File Extensions
-The migration system automatically detects both `.js` and `.ts` files. If you're not seeing TypeScript migrations:
+
+The migration system detects `.js`, `.ts`, `.mjs`, and `.cjs` files. If you're not seeing TypeScript migrations:
 
 1. Make sure your `knexfile.js` doesn't have a restrictive `extension` setting
 2. Check that the migration files are in the correct directory
 3. Use `migrate:list` to see all detected migrations
 
 ### Connection Issues
+
 If migrations fail to connect:
 
 1. Verify your `knexfile.js` configuration
@@ -371,6 +388,7 @@ If migrations fail to connect:
 4. Ensure proper schema/library permissions
 
 ### Example Complete Setup
+
 ```bash
 # 1. Install the package
 npm install @bdkinc/knex-ibmi knex odbc

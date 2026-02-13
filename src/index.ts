@@ -373,8 +373,13 @@ class DB2Client extends knex.Client {
     obj: any,
   ): Promise<any> {
     const { _ibmiUpdateReturning } = obj;
-    const { updateSql, selectColumns, whereClause, tableName } =
-      _ibmiUpdateReturning;
+    const {
+      updateSql,
+      selectColumns,
+      whereClause,
+      tableName,
+      setBindingCount,
+    } = _ibmiUpdateReturning;
 
     this.printDebug(
       "Executing UPDATE with returning using transaction approach",
@@ -398,11 +403,13 @@ class DB2Client extends knex.Client {
       // Extract only WHERE clause bindings for SELECT
       // UPDATE bindings format: [set_values..., where_values...]
       // We need to figure out how many bindings are for SET vs WHERE
-      const updateSqlParts = updateSql.split(" where ");
-      const setClausePart = updateSqlParts[0];
-      const setBindingCount = (setClausePart.match(/\?/g) || []).length;
+      const inferredSetBindingCount =
+        typeof setBindingCount === "number"
+          ? setBindingCount
+          : ((updateSql.split(" where ")[0].match(/\?/g) || [])
+              .length as number);
       const whereBindings = obj.bindings
-        ? obj.bindings.slice(setBindingCount)
+        ? obj.bindings.slice(inferredSetBindingCount)
         : [];
 
       const selectObj = {
@@ -1034,9 +1041,7 @@ class DB2Client extends knex.Client {
       return queryObject;
     } catch (retryError: any) {
       this.printError(`Retry failed: ${retryError.message}`);
-      // If retry fails, return empty result to prevent migration corruption
-      queryObject.response = { rows: [], rowCount: 0 };
-      return queryObject;
+      throw this.wrapError(retryError, `${method}_retry`, queryObject);
     }
   }
 

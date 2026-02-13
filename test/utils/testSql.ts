@@ -8,6 +8,6 @@ export const testSql = (
   expect(query.toString()).to.equal(expectedSql);
 
   if (expectedBindings) {
-    expect(query.toSQL().sql.bindings).to.deep.equal(expectedBindings);
+    expect(query.toSQL().bindings).to.deep.equal(expectedBindings);
   }
 };

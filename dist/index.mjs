@@ -473,7 +473,8 @@ var IBMiQueryCompiler = class extends QueryCompiler {
           updateSql: baseUpdateSql,
           selectColumns,
           whereClause: where,
-          tableName: this.tableName
+          tableName: this.tableName,
+          setBindingCount: updates.map((fragment) => (fragment.match(/\?/g) || []).length).reduce((sum, count) => sum + count, 0)
         }
       };
     }
@@ -538,6 +539,9 @@ import { Readable } from "stream";
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
+function buildTsRuntimeHelpMessage(fileName) {
+  return `TypeScript migration '${fileName}' requires a TypeScript runtime loader. Run with a TS-capable runtime (for example: \`node --import tsx\`) or precompile migrations to JavaScript.`;
+}
 var IBMiMigrationRunner = class {
   constructor(knex2, config) {
     __publicField(this, "knex");
@@ -596,7 +600,17 @@ var IBMiMigrationRunner = class {
         try {
           const migrationPath = this.getMigrationPath(migrationFile);
           const fileUrl = pathToFileURL(migrationPath).href;
-          const migration = await import(`${fileUrl}?t=${Date.now()}`);
+          let migration;
+          try {
+            migration = await import(`${fileUrl}?t=${Date.now()}`);
+          } catch (importError) {
+            const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
+            const message = String(importError?.message || importError || "");
+            if (isTsMigration && (message.includes("Unknown file extension") || message.includes("Cannot use import statement") || message.includes("Unexpected token"))) {
+              throw new Error(buildTsRuntimeHelpMessage(migrationFile));
+            }
+            throw importError;
+          }
           if (!migration.up || typeof migration.up !== "function") {
             throw new Error(`Migration ${migrationFile} has no 'up' function`);
           }
@@ -644,7 +658,17 @@ var IBMiMigrationRunner = class {
         try {
           const migrationPath = this.getMigrationPath(migrationFile);
           const fileUrl = pathToFileURL(migrationPath).href;
-          const migration = await import(`${fileUrl}?t=${Date.now()}`);
+          let migration;
+          try {
+            migration = await import(`${fileUrl}?t=${Date.now()}`);
+          } catch (importError) {
+            const isTsMigration = migrationFile.toLowerCase().endsWith(".ts");
+            const message = String(importError?.message || importError || "");
+            if (isTsMigration && (message.includes("Unknown file extension") || message.includes("Cannot use import statement") || message.includes("Unexpected token"))) {
+              throw new Error(buildTsRuntimeHelpMessage(migrationFile));
+            }
+            throw importError;
+          }
           if (migration.down && typeof migration.down === "function") {
             console.log(`  \u26A1 Executing rollback...`);
             await migration.down(this.knex);
@@ -715,17 +739,12 @@ var IBMiMigrationRunner = class {
     }
   }
   getMigrationFiles() {
-    const { directory, extension } = this.config;
+    const { directory } = this.config;
     if (!fs.existsSync(directory)) {
       throw new Error(`Migration directory does not exist: ${directory}`);
     }
     const validExtensions = ["js", "ts", "mjs", "cjs"];
-    return fs.readdirSync(directory).filter((file) => {
-      if (extension && extension !== "js") {
-        return file.endsWith(`.${extension}`);
-      }
-      return validExtensions.some((ext) => file.endsWith(`.${ext}`));
-    }).sort();
+    return fs.readdirSync(directory).filter((file) => validExtensions.some((ext) => file.endsWith(`.${ext}`))).sort();
   }
   getMigrationPath(filename) {
     return path.resolve(this.config.directory, filename);
@@ -969,7 +988,13 @@ var DB2Client = class extends knex.Client {
    */
   async executeUpdateReturning(connection, obj) {
     const { _ibmiUpdateReturning } = obj;
-    const { updateSql, selectColumns, whereClause, tableName } = _ibmiUpdateReturning;
+    const {
+      updateSql,
+      selectColumns,
+      whereClause,
+      tableName,
+      setBindingCount
+    } = _ibmiUpdateReturning;
     this.printDebug(
       "Executing UPDATE with returning using transaction approach"
     );
@@ -981,10 +1006,8 @@ var DB2Client = class extends knex.Client {
       };
       await this.executeStatementQuery(connection, updateObj);
       const selectSql = whereClause ? `select ${selectColumns} from ${tableName} ${whereClause}` : `select ${selectColumns} from ${tableName}`;
-      const updateSqlParts = updateSql.split(" where ");
-      const setClausePart = updateSqlParts[0];
-      const setBindingCount = (setClausePart.match(/\?/g) || []).length;
-      const whereBindings = obj.bindings ? obj.bindings.slice(setBindingCount) : [];
+      const inferredSetBindingCount = typeof setBindingCount === "number" ? setBindingCount : (updateSql.split(" where ")[0].match(/\?/g) || []).length;
+      const whereBindings = obj.bindings ? obj.bindings.slice(inferredSetBindingCount) : [];
       const selectObj = {
         sql: selectSql,
         bindings: whereBindings,
@@ -1439,8 +1462,7 @@ var DB2Client = class extends knex.Client {
       return queryObject;
     } catch (retryError) {
       this.printError(`Retry failed: ${retryError.message}`);
-      queryObject.response = { rows: [], rowCount: 0 };
-      return queryObject;
+      throw this.wrapError(retryError, `${method}_retry`, queryObject);
     }
   }
   /**
