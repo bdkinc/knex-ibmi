@@ -1454,11 +1454,25 @@ var DB2Client = class extends import_knex.default.Client {
   validateResponse(obj) {
     if (!obj.response) {
       this.printDebug("response undefined " + this.safeStringify(obj));
-      return null;
+      return this.processSqlMethod({
+        ...obj,
+        response: { rows: [], rowCount: 0 }
+      });
     }
     if (!obj.response.rows) {
-      this.printError("rows undefined " + this.safeStringify(obj));
-      return null;
+      const usesRowCountOnly = !obj.select && (obj.sqlMethod === "del" /* DELETE */ || obj.sqlMethod === "delete" /* DELETE_ALT */ || obj.sqlMethod === "update" /* UPDATE */ || obj.sqlMethod === "counter" /* COUNTER */);
+      if (usesRowCountOnly) {
+        return null;
+      }
+      this.printWarn("rows undefined " + this.safeStringify(obj));
+      return this.processSqlMethod({
+        ...obj,
+        response: {
+          ...obj.response,
+          rows: [],
+          rowCount: obj.response.rowCount ?? 0
+        }
+      });
     }
     return null;
   }
@@ -1548,7 +1562,8 @@ var DB2Client = class extends import_knex.default.Client {
     return errorMessage.includes("sql") || errorMessage.includes("syntax") || errorMessage.includes("table") || errorMessage.includes("column");
   }
   processSqlMethod(obj) {
-    const { rows, rowCount } = obj.response;
+    const rows = obj.response?.rows ?? [];
+    const rowCount = obj.response?.rowCount;
     switch (obj.sqlMethod) {
       case "select" /* SELECT */:
         return rows;
