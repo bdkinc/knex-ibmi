@@ -16,7 +16,7 @@
     "/dist"
   ],
   "bin": {
-    "ibmi-migrations": "./dist/cli.cjs"
+    "ibmi-migrations": "dist/cli.cjs"
   },
   "engines": {
     "node": ">=16"
