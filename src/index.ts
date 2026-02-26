@@ -968,15 +968,33 @@ class DB2Client extends knex.Client {
   private validateResponse(obj: QueryObject): any {
     if (!obj.response) {
       this.printDebug("response undefined " + this.safeStringify(obj));
-      return null;
+      return this.processSqlMethod({
+        ...obj,
+        response: { rows: [], rowCount: 0 },
+      } as QueryObject);
     }
 
-    // For non-select methods, it's fine if rows is empty/undefined as long as rowCount is set.
-    // Do not short-circuit here; allow processSqlMethod to normalize the return value.
-
     if (!obj.response.rows) {
-      this.printError("rows undefined " + this.safeStringify(obj));
-      return null;
+      const usesRowCountOnly =
+        !obj.select &&
+        (obj.sqlMethod === SqlMethod.DELETE ||
+          obj.sqlMethod === SqlMethod.DELETE_ALT ||
+          obj.sqlMethod === SqlMethod.UPDATE ||
+          obj.sqlMethod === SqlMethod.COUNTER);
+
+      if (usesRowCountOnly) {
+        return null;
+      }
+
+      this.printDebug("rows undefined " + this.safeStringify(obj));
+      return this.processSqlMethod({
+        ...obj,
+        response: {
+          ...obj.response,
+          rows: [],
+          rowCount: obj.response.rowCount ?? 0,
+        },
+      } as QueryObject);
     }
 
     return null;
@@ -1124,7 +1142,8 @@ class DB2Client extends knex.Client {
   }
 
   private processSqlMethod(obj: QueryObject): any {
-    const { rows, rowCount } = obj.response!;
+    const rows = obj.response?.rows ?? [];
+    const rowCount = obj.response?.rowCount;
 
     switch (obj.sqlMethod) {
       case SqlMethod.SELECT:

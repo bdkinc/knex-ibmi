@@ -175,4 +175,34 @@ describe("IBMi Client", () => {
       expect(typeof result[0].id).to.equal("bigint");
     });
   });
+
+  describe("Response handling regressions", () => {
+    it("does not throw when insert response is missing", () => {
+      const queryObject: any = {
+        sqlMethod: "insert",
+      };
+
+      expect(() => client.processResponse(queryObject, {})).to.not.throw();
+      expect(client.processResponse(queryObject, {})).to.deep.equal([]);
+    });
+
+    it("returns 0 for update when response is missing", () => {
+      const queryObject: any = {
+        sqlMethod: "update",
+      };
+
+      expect(client.processResponse(queryObject, {})).to.equal(0);
+    });
+
+    it("uses rowCount for counter when rows are missing", () => {
+      const queryObject: any = {
+        sqlMethod: "counter",
+        response: {
+          rowCount: 7,
+        },
+      };
+
+      expect(client.processResponse(queryObject, {})).to.equal(7);
+    });
+  });
 });
