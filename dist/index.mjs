@@ -1429,7 +1429,7 @@ var DB2Client = class extends knex.Client {
       if (usesRowCountOnly) {
         return null;
       }
-      this.printDebug("rows undefined " + this.safeStringify(obj));
+      this.printWarn("rows undefined " + this.safeStringify(obj));
       return this.processSqlMethod({
         ...obj,
         response: {
