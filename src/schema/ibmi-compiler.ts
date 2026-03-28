@@ -81,7 +81,11 @@ class IBMiSchemaCompiler extends SchemaCompiler {
 
           // Handle response with rows property
           const rowsObj = respObj as { rows?: unknown[] };
-          if (rowsObj.rows && Array.isArray(rowsObj.rows) && rowsObj.rows.length > 0) {
+          if (
+            rowsObj.rows &&
+            Array.isArray(rowsObj.rows) &&
+            rowsObj.rows.length > 0
+          ) {
             const firstRow = rowsObj.rows[0] as Record<string, unknown> | null;
             if (firstRow && typeof firstRow === "object") {
               const count =

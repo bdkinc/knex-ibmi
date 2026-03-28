@@ -15,7 +15,7 @@ describe("Sequential Insert Transactional Config", () => {
     // Still only shows first row (sequential strategy) regardless of transactional flag
     testSql(
       query,
-      "select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into foo (a) values (1))"
+      "select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into foo (a) values (1))",
     );
   });
 });

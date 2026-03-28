@@ -30,7 +30,10 @@ describe("Pool Connection Disposal", () => {
     };
 
     try {
-      await (client as any)._query(connection, { sql: "select 1", bindings: [] });
+      await (client as any)._query(connection, {
+        sql: "select 1",
+        bindings: [],
+      });
       expect.fail("Expected query to throw");
     } catch {
       // ignore

@@ -1,9 +1,9 @@
 ---
 name: Bug Report
 about: Report a bug or unexpected behavior
-title: '[BUG] '
+title: "[BUG] "
 labels: bug
-assignees: ''
+assignees: ""
 ---
 
 ## Description
@@ -12,9 +12,9 @@ A clear and concise description of the bug.
 
 ## Steps to Reproduce
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## Expected Behavior
 
@@ -38,12 +38,12 @@ What actually happened.
 
 ## Environment
 
-- **Node.js version**: 
-- **knex-ibmi version**: 
-- **knex version**: 
-- **IBM i OS version**: 
-- **ODBC driver version**: 
-- **Operating system**: 
+- **Node.js version**:
+- **knex-ibmi version**:
+- **knex version**:
+- **IBM i OS version**:
+- **ODBC driver version**:
+- **Operating system**:
 
 ## Additional Context
 

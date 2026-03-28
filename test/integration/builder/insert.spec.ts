@@ -16,7 +16,7 @@ describe("Inserts", () => {
 
     testSql(
       query,
-      `select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into testtable (x, y) values (1, 2))`
+      `select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into testtable (x, y) values (1, 2))`,
     );
   });
 
@@ -25,7 +25,7 @@ describe("Inserts", () => {
 
     testSql(
       query,
-      `select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into "testtable" ("x") values (1))`
+      `select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into "testtable" ("x") values (1))`,
     );
   });
 
@@ -41,10 +41,7 @@ describe("Inserts", () => {
       ])
       .into("testtable");
     // Auto strategy without returning uses plain INSERT for performance
-    testSql(
-      query,
-      "insert into testtable (x, y) values (1, 2), (3, 4)"
-    );
+    testSql(query, "insert into testtable (x, y) values (1, 2), (3, 4)");
   });
 
   it("supports multi-row insert disabled (falls back to single)", () => {
@@ -61,7 +58,7 @@ describe("Inserts", () => {
     // Falls back to first row only legacy behavior
     testSql(
       query,
-      "select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into testtable (x, y) values (1, 2))"
+      "select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into testtable (x, y) values (1, 2))",
     );
   });
 
@@ -78,7 +75,7 @@ describe("Inserts", () => {
       .into("testtable");
     testSql(
       query,
-      "select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into testtable (x, y) values (1, 2))"
+      "select IDENTITY_VAL_LOCAL() from FINAL TABLE(insert into testtable (x, y) values (1, 2))",
     );
   });
 });

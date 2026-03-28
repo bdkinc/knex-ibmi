@@ -101,10 +101,7 @@ describe("Update Statements", () => {
   it("supports update with returning clause", () => {
     const updates = { x: 10, y: 20 };
     const query = knex("test").update(updates).where("x", "y").returning("id");
-    testSql(
-      query,
-      "update test set x = 10, y = 20 where x = 'y'",
-    );
+    testSql(query, "update test set x = 10, y = 20 where x = 'y'");
   });
 
   it("supports update with returning clause and multiple columns", () => {
@@ -113,10 +110,7 @@ describe("Update Statements", () => {
       .update(updates)
       .where("x", "y")
       .returning(["id", "x"]);
-    testSql(
-      query,
-      "update test set x = 10, y = 20 where x = 'y'",
-    );
+    testSql(query, "update test set x = 10, y = 20 where x = 'y'");
   });
 
   it("supports conditional update using case/when", () => {

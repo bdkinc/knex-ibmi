@@ -28,7 +28,9 @@ describe("ODBC Error Handling", () => {
 
       it("detects SQLSTATE 08S01 (communication link failure)", () => {
         const error = {
-          odbcErrors: [{ state: "08S01", message: "Communication link failure" }],
+          odbcErrors: [
+            { state: "08S01", message: "Communication link failure" },
+          ],
           message: "Link failed",
         };
         expect((client as any).isConnectionError(error)).to.be.true;
@@ -36,7 +38,9 @@ describe("ODBC Error Handling", () => {
 
       it("detects SQLSTATE 40003 (transaction rollback)", () => {
         const error = {
-          odbcErrors: [{ state: "40003", message: "Statement completion unknown" }],
+          odbcErrors: [
+            { state: "40003", message: "Statement completion unknown" },
+          ],
           message: "Transaction rollback",
         };
         expect((client as any).isConnectionError(error)).to.be.true;
@@ -98,7 +102,9 @@ describe("ODBC Error Handling", () => {
 
       it("detects SQLSTATE 22xxx (data exception)", () => {
         const error = {
-          odbcErrors: [{ state: "22001", message: "String data right truncation" }],
+          odbcErrors: [
+            { state: "22001", message: "String data right truncation" },
+          ],
           message: "Data error",
         };
         expect((client as any).isSQLError(error)).to.be.true;
@@ -106,7 +112,9 @@ describe("ODBC Error Handling", () => {
 
       it("detects SQLSTATE 23xxx (integrity constraint)", () => {
         const error = {
-          odbcErrors: [{ state: "23000", message: "Integrity constraint violation" }],
+          odbcErrors: [
+            { state: "23000", message: "Integrity constraint violation" },
+          ],
           message: "Constraint violation",
         };
         expect((client as any).isSQLError(error)).to.be.true;
@@ -254,17 +262,20 @@ describe("ODBC Error Handling", () => {
   describe("shouldRetryQuery", () => {
     it("returns true for systables queries", () => {
       const queryObject = { sql: "SELECT * FROM QSYS2.SYSTABLES WHERE ..." };
-      expect((client as any).shouldRetryQuery(queryObject, "select")).to.be.true;
+      expect((client as any).shouldRetryQuery(queryObject, "select")).to.be
+        .true;
     });
 
     it("returns true for knex_migrations queries", () => {
       const queryObject = { sql: "SELECT * FROM KNEX_MIGRATIONS" };
-      expect((client as any).shouldRetryQuery(queryObject, "select")).to.be.true;
+      expect((client as any).shouldRetryQuery(queryObject, "select")).to.be
+        .true;
     });
 
     it("returns false for regular queries", () => {
       const queryObject = { sql: "SELECT * FROM users" };
-      expect((client as any).shouldRetryQuery(queryObject, "select")).to.be.false;
+      expect((client as any).shouldRetryQuery(queryObject, "select")).to.be
+        .false;
     });
   });
 });

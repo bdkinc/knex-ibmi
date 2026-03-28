@@ -10,10 +10,10 @@ class IBMiTransaction extends Transaction {
     } catch (error: any) {
       if (this.isConnectionClosed(error)) {
         console.warn(
-          "IBM i DB2: Connection closed during transaction begin, DDL operations may have caused implicit commit"
+          "IBM i DB2: Connection closed during transaction begin, DDL operations may have caused implicit commit",
         );
         throw new Error(
-          "Connection closed during transaction begin - consider using migrations.disableTransactions: true"
+          "Connection closed during transaction begin - consider using migrations.disableTransactions: true",
         );
       }
       throw error;
@@ -27,7 +27,7 @@ class IBMiTransaction extends Transaction {
       // Treat rollback on a closed connection as success to avoid hangs
       console.warn(
         "IBM i DB2: Rollback encountered an error (likely closed connection):",
-        error?.message || error
+        error?.message || error,
       );
       return Promise.resolve();
     }
@@ -39,11 +39,11 @@ class IBMiTransaction extends Transaction {
     } catch (error: any) {
       if (this.isConnectionClosed(error)) {
         console.warn(
-          "IBM i DB2: Connection closed during commit - DDL operations cause implicit commits"
+          "IBM i DB2: Connection closed during commit - DDL operations cause implicit commits",
         );
         // Re-throw so Knex can surface the expected failure semantics
         throw new Error(
-          "Connection closed during commit - this is expected with DDL operations on IBM i DB2"
+          "Connection closed during commit - this is expected with DDL operations on IBM i DB2",
         );
       }
       throw error;

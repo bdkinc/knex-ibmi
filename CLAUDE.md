@@ -21,6 +21,7 @@ IBM i DB2 has several unique characteristics that this dialect handles:
 ### Architecture Patterns
 
 **Query Execution Flow**:
+
 ```
 Knex Query → QueryCompiler → DB2Client._query() → ODBC Connection → IBM i DB2
                                      ↓
@@ -28,6 +29,7 @@ Knex Query → QueryCompiler → DB2Client._query() → ODBC Connection → IBM 
 ```
 
 **Special Execution Paths**:
+
 - `_ibmiUpdateReturning`: UPDATE + SELECT emulation (metadata attached to query object)
 - `_ibmiDeleteReturning`: SELECT + DELETE emulation (metadata attached to query object)
 - `_ibmiSequentialInsert`: Row-by-row insert for reliable identity values
@@ -39,6 +41,7 @@ Knex Query → QueryCompiler → DB2Client._query() → ODBC Connection → IBM 
 **Why it exists**: Standard Knex migrations use row-level locking on the migrations table, which fails on IBM i due to auto-commit DDL.
 
 **How it works**:
+
 - Custom runner bypasses Knex's migration lock mechanism
 - Directly queries migration table without locking
 - Includes CLI similar to Knex's interface
@@ -68,8 +71,8 @@ ODBC errors come in different formats than typical SQL errors:
 ```typescript
 {
   odbcErrors: [
-    { state: "02000", message: "No data found" }  // SQLSTATE codes
-  ]
+    { state: "02000", message: "No data found" }, // SQLSTATE codes
+  ];
 }
 ```
 
@@ -79,10 +82,10 @@ Empty `odbcErrors` arrays often indicate zero-row DML operations, not failures.
 
 ```typescript
 // ✅ Good - case-insensitive
-db.table('users').select('*')  // → SELECT * FROM USERS
+db.table("users").select("*"); // → SELECT * FROM USERS
 
 // ❌ Problematic - creates case-sensitive identifier
-db.table('"Users"').select('*')  // → SELECT * FROM "Users"
+db.table('"Users"').select("*"); // → SELECT * FROM "Users"
 ```
 
 The `wrapIdentifierImpl()` method specifically avoids wrapping to maintain case-insensitivity.
@@ -102,6 +105,7 @@ await db.transaction(async (trx) => {
 ## Code Locations
 
 **When modifying**:
+
 - Query compilation logic → `src/query/ibmi-querycompiler.ts`
 - Schema/DDL generation → `src/schema/*.ts`
 - Connection/execution → `src/index.ts` (DB2Client class)
@@ -109,6 +113,7 @@ await db.transaction(async (trx) => {
 - Type definitions → `types/` and interfaces in `src/index.ts`
 
 **When debugging**:
+
 - Set `DEBUG=true` for verbose logs
 - Check `executeStatementQuery()` for DML execution
 - Check `executeSelectQuery()` for SELECT execution
@@ -117,6 +122,7 @@ await db.transaction(async (trx) => {
 ## Testing Philosophy
 
 Tests should verify:
+
 1. Correct SQL generation (query compiler tests)
 2. Proper ODBC parameter binding
 3. IBM i-specific edge cases (case insensitivity, IDENTITY handling)
@@ -157,6 +163,7 @@ A: IBM i DB2's function to retrieve the last auto-generated identity value on th
 ## Cursor Position Context
 
 You're currently viewing `src/index.ts` at line 304, which is in the `executeUpdateReturning()` method. This method handles UPDATE queries with RETURNING clauses by:
+
 1. Executing the UPDATE statement
 2. Extracting WHERE clause bindings
 3. Re-selecting updated rows using the same WHERE clause

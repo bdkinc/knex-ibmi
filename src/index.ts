@@ -209,6 +209,25 @@ class DB2Client extends knex.Client {
       this._getConnectionString(connectionConfig),
     );
 
+    if (connectionConfig.sessionInit) {
+      const { currentSchema, currentPath, statements } =
+        connectionConfig.sessionInit;
+
+      if (currentSchema) {
+        await connection.query(`SET CURRENT SCHEMA = ${currentSchema}`);
+      }
+
+      if (currentPath) {
+        await connection.query(`SET CURRENT PATH = ${currentPath}`);
+      }
+
+      if (statements && statements.length > 0) {
+        for (const stmt of statements) {
+          await connection.query(stmt);
+        }
+      }
+    }
+
     return connection;
   }
 
@@ -260,11 +279,15 @@ class DB2Client extends knex.Client {
       return `${result}${key}=${value};`;
     }, "");
 
+    const databasePart = connectionConfig.database
+      ? `DATABASE=${connectionConfig.database};`
+      : "";
+
     return (
       `DRIVER=${connectionConfig.driver};` +
       `SYSTEM=${connectionConfig.host};` +
       `PORT=${connectionConfig.port || 8471};` +
-      `DATABASE=${connectionConfig.database};` +
+      databasePart +
       `UID=${connectionConfig.user};` +
       `PWD=${connectionConfig.password};` +
       connectionStringExtension
@@ -1327,13 +1350,18 @@ interface DB2ConnectionParams {
 }
 
 interface DB2ConnectionConfig {
-  database: string;
+  database?: string;
   host: string;
-  port: 8471 | 9471 | number;
+  port?: number;
   user: string;
   password: string;
   driver: "IBM i Access ODBC Driver" | string;
   connectionStringParams?: DB2ConnectionParams;
+  sessionInit?: {
+    currentSchema?: string;
+    currentPath?: string;
+    statements?: string[];
+  };
 }
 
 export interface DB2Config extends Knex.Config {

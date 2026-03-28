@@ -32,6 +32,23 @@ describe("IBMi Client", () => {
       expect(connectionString).to.equal(expectedConnectionString);
     });
 
+    it("should omit DATABASE if not provided", () => {
+      const connectionConfig = {
+        host: "localhost",
+        port: 8471,
+        user: "db2inst1",
+        password: "password",
+        driver: "{IBM Cli Driver}",
+      };
+      const expectedConnectionString =
+        `DRIVER=${connectionConfig.driver};SYSTEM=${connectionConfig.host};` +
+        `PORT=${connectionConfig.port};UID=${connectionConfig.user};PWD=${connectionConfig.password};`;
+
+      const connectionString = client._getConnectionString(connectionConfig);
+
+      expect(connectionString).to.equal(expectedConnectionString);
+    });
+
     it("should append additional connection string parameters", () => {
       const connectionConfig = {
         connectionStringParams: {
