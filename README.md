@@ -2,26 +2,31 @@
 
 [![npm version](http://img.shields.io/npm/v/@bdkinc/knex-ibmi.svg)](https://npmjs.org/package/@bdkinc/knex-ibmi)
 
-Knex.js dialect for DB2 on IBM i (via ODBC). Built for usage with the official IBM i Access ODBC driver and tested on IBM i.
+A [Knex.js](https://knexjs.org/) dialect for DB2 on IBM i, built on the IBM-supported [`odbc`](https://github.com/IBM/node-odbc) driver. Tested against the IBM i Access ODBC driver.
 
-For IBM i OSS docs, see https://ibmi-oss-docs.readthedocs.io/. ODBC guidance: https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html.
+For general IBM i + Node.js background, see the [IBM i OSS docs](https://ibmi-oss-docs.readthedocs.io/).
 
-> Found an issue or have a question? Please open an issue.
+Found an issue or have a question? Please [open an issue](https://github.com/bdkinc/knex-ibmi/issues).
 
 ## Features
 
-- Query building
-- Query execution
+- Query building and execution against DB2 for IBM i over ODBC
 - Transactions
-- Streaming
-- Multi-row insert strategies (auto | sequential | disabled)
-- Emulated returning for UPDATE and DELETE
+- Streaming (Node stream piping and async iteration)
+- Multi-row insert strategies (`auto` | `sequential` | `disabled`)
+- Emulated `RETURNING` behavior for `INSERT`, `UPDATE`, and `DELETE`
+- Built-in migration runner designed around IBM i's DDL auto-commit behavior
 
-## Requirements
+## Prerequisites
 
-- Node.js >= 20
-- [`odbc`](https://github.com/IBM/node-odbc) >= 2.5
-- ODBC driver (IBM i Access ODBC Driver)
+Before installing, confirm:
+
+- [ ] Node.js **>= 20**
+- [ ] Network access to an IBM i host (or `*LOCAL` if running on the IBM i IFS)
+- [ ] The **IBM i Access ODBC Driver** (or equivalent) installed and registered with your platform's ODBC driver manager
+- [ ] A valid IBM i user profile with access to the target schema/library
+
+If you haven't installed or configured the ODBC driver yet, do that first — see [ODBC Driver Setup](#odbc-driver-setup) below and the [IBM i OSS ODBC guide](https://ibmi-oss-docs.readthedocs.io/en/latest/odbc/README.html).
 
 ## Installation
 
@@ -29,22 +34,26 @@ For IBM i OSS docs, see https://ibmi-oss-docs.readthedocs.io/. ODBC guidance: ht
 npm install @bdkinc/knex-ibmi knex odbc
 ```
 
+This package declares `knex` `^3.3.0` and `odbc` `^2.5.0` as runtime dependencies. Installing them explicitly is optional, but it can be useful when your application wants to control their versions directly.
+
 ## Quick Start
 
-```js
+The example below is TypeScript. For ESM JavaScript, remove the `DB2Config` type import and the `: DB2Config` annotation.
+
+```ts
 import knex from "knex";
 import { DB2Dialect } from "@bdkinc/knex-ibmi";
+import type { DB2Config } from "@bdkinc/knex-ibmi";
 
-/** @type {import("@bdkinc/knex-ibmi").DB2Config} */
-const config = {
+const config: DB2Config = {
   client: DB2Dialect,
   connection: {
-    host: "your-ibm-i-host",
+    host: process.env.IBMI_HOST || "your-ibm-i-host",
     database: "*LOCAL",
-    user: "your-username",
-    password: "your-password",
+    user: process.env.IBMI_USER || "your-username",
+    password: process.env.IBMI_PASSWORD || "your-password",
     driver: "IBM i Access ODBC Driver",
-    connectionStringParams: { DBQ: "MYLIB" },
+    connectionStringParams: { DBQ: process.env.IBMI_LIBRARY || "MYLIB" },
   },
   pool: { min: 2, max: 10 },
 };
@@ -61,152 +70,79 @@ try {
 }
 ```
 
-## Usage
+### Module formats
 
-This package can be used with CommonJS, ESM, or TypeScript.
-
-### CommonJS
+The connection config shape is the same in CommonJS, ESM, and TypeScript. The imports and TypeScript annotation differ:
 
 ```js
+// CommonJS
 const knex = require("knex");
 const { DB2Dialect } = require("@bdkinc/knex-ibmi");
-
-const db = knex({
-  client: DB2Dialect,
-  connection: {
-    host: "your-ibm-i-host",
-    database: "*LOCAL",
-    user: "your-username",
-    password: "your-password",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-      DBQ: "MYLIB",
-    },
-  },
-  pool: { min: 2, max: 10 },
-});
-
-// Example query
-db.select("*")
-  .from("MYTABLE")
-  .where({ STATUS: "A" })
-  .then((results) => console.log(results))
-  .catch((error) => console.error("Database error:", error))
-  .finally(() => db.destroy());
 ```
-
-### ESM
 
 ```js
+// ESM
 import knex from "knex";
 import { DB2Dialect } from "@bdkinc/knex-ibmi";
+```
 
-/** @type {import("@bdkinc/knex-ibmi").DB2Config} */
-const config = {
-  client: DB2Dialect,
-  connection: {
-    host: "your-ibm-i-host",
-    database: "*LOCAL",
-    user: "your-username",
-    password: "your-password",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-      DBQ: "MYLIB",
-    },
-  },
-  pool: { min: 2, max: 10 },
-};
+```ts
+// TypeScript (adds the DB2Config type for config validation)
+import knex from "knex";
+import { DB2Dialect } from "@bdkinc/knex-ibmi";
+import type { DB2Config } from "@bdkinc/knex-ibmi";
+```
 
-const db = knex(config);
+Use the connection configuration shown in [Quick Start](#quick-start), then call `db.destroy()` when your program exits.
 
+## Identifiers
+
+IBM i DB2 is case-insensitive by default when identifiers are unquoted (unquoted names are folded to uppercase internally). To preserve this behavior, `knex-ibmi` does **not** wrap table/column identifiers in quotes the way most Knex dialects do. This means:
+
+- You can write `.where({ status: "A" })` or `.where({ STATUS: "A" })` interchangeably against the same column.
+- Identifiers are not case-sensitive unless you deliberately created case-sensitive (quoted) object names on IBM i, which this dialect does not support.
+- The built-in migration runner defaults to `KNEX_MIGRATIONS`. The dialect also normalizes the standard `KNEX_MIGRATIONS` / `knex_migrations` names to uppercase; arbitrary custom table names are preserved.
+
+## Streaming
+
+Use `.stream({ fetchSize })` to control how many rows are fetched from the driver per batch. The dialect auto-tunes `fetchSize` based on query complexity if you don't provide one.
+
+**Async iteration** is the simplest and recommended approach:
+
+```ts
+// Reuse the `db` instance from Quick Start.
 try {
-  const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
-  console.log(results);
-} catch (error) {
-  console.error("Database error:", error);
+  const stream = await db("LARGETABLE").select("*").stream({ fetchSize: 200 });
+  for await (const row of stream) {
+    console.log("row id=", row.ID);
+  }
 } finally {
   await db.destroy();
 }
 ```
 
-### TypeScript
+If you need a `Transform` stage, use `pipeline()` from `node:stream/promises` rather than `.pipe()` followed by `finished(source)` — `pipeline` propagates errors and closes every stream in the chain for you, and calling `finished()` on the _source_ after you've already piped it elsewhere can resolve/reject incorrectly:
 
 ```ts
-import { knex } from "knex";
-import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
-
-const config: DB2Config = {
-  client: DB2Dialect,
-  connection: {
-    host: "your-ibm-i-host",
-    database: "*LOCAL",
-    user: "your-username",
-    password: "your-password",
-    driver: "IBM i Access ODBC Driver",
-    connectionStringParams: {
-      ALLOWPROCCALLS: 1,
-      CMT: 0,
-      DBQ: "MYLIB",
-    },
-  },
-  pool: { min: 2, max: 10 },
-};
-
-const db = knex(config);
-
-try {
-  const results = await db.select("*").from("MYTABLE").where({ STATUS: "A" });
-  console.log(results);
-} catch (error) {
-  console.error("Database error:", error);
-} finally {
-  await db.destroy();
-}
-```
-
-### Streaming
-
-There are two primary ways to consume a result stream: (1) classic Node stream piping with transform stages, and (2) async iteration with `for await` (which can be easier to reason about). Use a `fetchSize` to control how many rows are fetched from the driver per batch.
-
-```ts
-import { knex } from "knex";
-import { DB2Dialect, DB2Config } from "@bdkinc/knex-ibmi";
+import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
-import { finished } from "node:stream/promises";
-
-const config: DB2Config = {
-  /* ...same as earlier examples... */
-};
-const db = knex(config);
 
 try {
   const stream = await db("LARGETABLE").select("*").stream({ fetchSize: 100 });
 
-  // Approach 1: Pipe through a Transform stream
   const transform = new Transform({
     objectMode: true,
     transform(row, _enc, cb) {
-      // Process each row (side effects, enrichment, filtering, etc.)
-      console.log("Transforming row id=", row.ID);
+      console.log("transforming row id=", row.ID);
       cb(null, row);
     },
   });
-  stream.pipe(transform);
-  await finished(stream); // Wait until piping completes
 
-  // Approach 2: Async iteration (recommended for simplicity)
-  const iterStream = await db("LARGETABLE")
-    .select("*")
-    .stream({ fetchSize: 200 });
-  for await (const row of iterStream) {
-    console.log("Iter row id=", row.ID);
-  }
-} catch (error) {
-  console.error("Streaming error:", error);
+  await pipeline(stream, transform, async function drain(source) {
+    for await (const _row of source) {
+      // rows already handled in the transform above
+    }
+  });
 } finally {
   await db.destroy();
 }
@@ -222,8 +158,8 @@ odbcinst -j
 
 Example entries:
 
-```
-[IBM i Access ODBC Driver]  # driver name in square brackets
+```ini
+[IBM i Access ODBC Driver]
 Description=IBM i Access for Linux ODBC Driver
 Driver=/opt/ibm/iaccess/lib/libcwbodbc.so
 Setup=/opt/ibm/iaccess/lib/libcwbodbcs.so
@@ -242,127 +178,107 @@ DontDLClose=1
 UsageCount=1
 ```
 
-If unixODBC is using the wrong config directory (e.g., your configs are in `/etc` but it expects elsewhere), set:
+If unixODBC is looking in the wrong config directory (e.g., your configs live in `/etc` but it expects elsewhere), point it explicitly:
 
 ```bash
 export ODBCINI=/etc
 export ODBCSYSINI=/etc
 ```
 
-## Bundling with Vite
+## Bundling
 
-If you bundle with Vite, exclude certain native deps during optimize step:
-
-```js
-// vite.config.js
-export default {
-  optimizeDeps: {
-    exclude: ["@mapbox"],
-  },
-};
-```
+`odbc` is a native Node.js addon, and `knex-ibmi` is intended to run server-side only — it cannot run in a browser. If you build this package (or an app that uses it) with a bundler targeting Node.js (webpack, esbuild, Vite in SSR/Node mode, etc.), mark `odbc` and `knex` as **external** dependencies rather than bundling them, so the native binary is loaded from `node_modules` at runtime instead of being inlined.
 
 ## Migrations
 
-⚠️ **Important**: Standard Knex migrations don't work reliably with IBM i DB2 due to auto-commit DDL operations and locking issues.
+⚠️ **Important**: Standard Knex migrations are not reliable on IBM i DB2 because DDL auto-commits and Knex's locking approach can conflict with IBM i behavior. Use the built-in IBM i migration runner instead.
 
-### Recommended: Use Built-in IBM i Migration System
+### Programmatic API
 
-The knex-ibmi library includes a custom migration system that bypasses Knex's problematic locking mechanism:
+Create the runner after creating `db` and before your application's final `db.destroy()` call:
 
-```js
+```ts
 import { createIBMiMigrationRunner } from "@bdkinc/knex-ibmi";
 
 const migrationRunner = createIBMiMigrationRunner(db, {
   directory: "./migrations",
   tableName: "KNEX_MIGRATIONS",
-  schemaName: "MYSCHEMA",
+  schemaName: "MYSCHEMA", // optional
 });
 
-// Run migrations
-await migrationRunner.latest();
-
-// Rollback
-await migrationRunner.rollback();
-
-// Check status
+await migrationRunner.latest(); // run pending migrations
+// await migrationRunner.rollback(); // run separately when intentionally rolling back
 const pending = await migrationRunner.listPending();
+const executed = await migrationRunner.listExecuted();
+
+await db.destroy();
 ```
 
-**CLI Usage:** The package includes a built-in CLI that can be used via npm scripts or npx:
+> **Rollback note:** if a migration has no `down` export, `rollback()` skips executing a rollback callback for it but still deletes its row from the migration tracking table — the migration will be considered "not applied" even though its `up` changes were never reverted. Write a `down` for every migration you expect to roll back safely.
+
+### CLI
+
+The package ships a CLI binary, `ibmi-migrations`. It uses `./knexfile.js` by default; pass `--knexfile ./knexfile.ts` or another path when needed:
 
 ```bash
-# Install globally (optional)
-npm install -g @bdkinc/knex-ibmi
-
-# Or use via npx (recommended)
-npx ibmi-migrations migrate:latest    # Run pending migrations
-npx ibmi-migrations migrate:rollback  # Rollback last batch
-npx ibmi-migrations migrate:status    # Show migration status
-npx ibmi-migrations migrate:make create_users_table        # Create new JS migration
-npx ibmi-migrations migrate:make add_email_column -x ts    # Create new TS migration
-
-# Or add to your package.json scripts:
-{
-  "scripts": {
-    "migrate:latest": "ibmi-migrations migrate:latest",
-    "migrate:rollback": "ibmi-migrations migrate:rollback",
-    "migrate:status": "ibmi-migrations migrate:status",
-    "migrate:make": "ibmi-migrations migrate:make"
-  }
-}
-
-# Then run with npm:
-npm run migrate:latest
-npm run migrate:status
+npx ibmi-migrations migrate:make create_users_table   # scaffold a migration
+npx ibmi-migrations migrate:latest                     # run pending migrations
+npx ibmi-migrations migrate:status                      # show status
 ```
 
-**Full CLI API (similar to Knex):**
-
-```bash
-ibmi-migrations migrate:latest         # Run all pending migrations
-ibmi-migrations migrate:rollback       # Rollback last migration batch
-ibmi-migrations migrate:rollback --steps 2
-ibmi-migrations migrate:status         # Show detailed migration status
-ibmi-migrations migrate:currentVersion # Show current migration version
-ibmi-migrations migrate:list           # List all migrations
-ibmi-migrations migrate:make <name>    # Create new migration file
-
-# Options:
-ibmi-migrations migrate:status --env production
-ibmi-migrations migrate:latest --knexfile ./config/knexfile.js
-ibmi-migrations migrate:latest --knexfile ./knexfile.ts        # Use TypeScript knexfile
-ibmi-migrations migrate:make create_users_table
-ibmi-migrations migrate:make add_email_column -x ts            # TypeScript migration
-```
-
-TypeScript knexfiles/migrations require running the CLI with a TypeScript-capable runtime loader
-(for example: `node --import tsx ./node_modules/.bin/ibmi-migrations ...`) or precompiling to JavaScript.
-
-Migration discovery includes `.js`, `.ts`, `.mjs`, and `.cjs` files in the migration directory.
-
-📖 **See [MIGRATIONS.md](./MIGRATIONS.md) for complete documentation**
-
-### Alternative: Standard Knex with Transactions Disabled
-
-If you must use standard Knex migrations, disable transactions to avoid issues:
+Minimal ESM `knexfile.js` (use a `.mjs` extension or set `"type": "module"` in `package.json`):
 
 ```js
-/** @type {import("@bdkinc/knex-ibmi").DB2Config} */
-const config = {
+import { DB2Dialect } from "@bdkinc/knex-ibmi";
+
+export default {
+  development: {
+    client: DB2Dialect,
+    connection: {
+      host: process.env.IBMI_HOST,
+      database: "*LOCAL",
+      user: process.env.IBMI_USER,
+      password: process.env.IBMI_PASSWORD,
+      driver: "IBM i Access ODBC Driver",
+      connectionStringParams: { DBQ: process.env.IBMI_LIBRARY },
+    },
+    migrations: {
+      directory: "./migrations",
+      tableName: "KNEX_MIGRATIONS",
+    },
+  },
+};
+```
+
+TypeScript knexfiles/migrations (`.ts`) require a TypeScript-capable loader. For example:
+
+```bash
+node --import tsx ./node_modules/@bdkinc/knex-ibmi/dist/cli.cjs migrate:latest --knexfile ./knexfile.ts
+```
+
+Alternatively, set `NODE_OPTIONS=--import=tsx` when invoking `npx ibmi-migrations`, or precompile the files to JavaScript.
+
+📖 See **[MIGRATIONS.md](./MIGRATIONS.md)** for the full CLI command reference, TypeScript workflow, configuration options, and troubleshooting.
+
+### Alternative: standard Knex migrations with transactions disabled
+
+If you must use Knex's own migration system, disable transactions to avoid hangs on IBM i's auto-commit DDL:
+
+```ts
+const config: DB2Config = {
   client: DB2Dialect,
   connection: {
-    /* your connection config */
+    /* ... */
   },
   migrations: {
-    disableTransactions: true, // Required for IBM i
+    disableTransactions: true, // required for IBM i
     directory: "./migrations",
     tableName: "knex_migrations",
   },
 };
 ```
 
-**Warning**: Standard Knex migrations may still hang on lock operations. The built-in IBM i migration system is strongly recommended.
+This is not the recommended path — standard Knex migrations can still hang on lock operations that don't behave as expected against IBM i. Prefer the built-in runner above. Because DDL auto-commits on IBM i, schema changes are not transactionally reversible even when the migration framework reports a transaction boundary.
 
 ## Multi-Row Insert Strategies
 
@@ -378,58 +294,59 @@ const db = knex({
 });
 ```
 
-- `auto` (default): Generates a single INSERT with multiple VALUES lists. For `.returning('*')` or no explicit column list it returns all inserted rows (lenient fallback). Identity values are whatever DB2 ODBC surfaces for that multi-row statement.
-- `sequential`: Compiler shows a single-row statement (first row) but at execution time each row is inserted individually inside a loop to reliably collect identity values (using `IDENTITY_VAL_LOCAL()` per row). Suitable when you need each generated identity.
-- `disabled`: Falls back to legacy behavior: only the first row is inserted (others ignored). Useful for strict backward compatibility.
+- **`auto`** (default): Generates a single multi-row `INSERT ... VALUES (...), (...), ...` statement.
+  - Without `.returning(...)`: executes as plain DML and provides **no guaranteed generated identities**. The returned value is the dialect's processed ODBC result, not a guaranteed affected-row count.
+  - With `.returning(...)`: the statement is wrapped as `SELECT ... FROM FINAL TABLE(INSERT ...)` to surface the inserted rows. Whether `FINAL TABLE` works correctly for multi-row inserts depends on your IBM i release and ODBC driver support — test this against your target system before relying on it in production.
+- **`sequential`**: Inserts each row individually, in a loop, on the same connection. Because each insert runs on its own, the driver can reliably return per-row values (including generated identities) for every row. Use this when you need dependable identity values across multiple rows.
+  - Set `ibmi.sequentialInsertTransactional: true` to wrap the loop in a driver-level transaction using the `odbc` package's `beginTransaction()` / `commit()` / `rollback()` APIs. The target tables must be journaled, and the connection must use a commitment-control level such as `CMT: 1`–`4`; `CMT: 0` disables commitment control. Exact semantics depend on the selected CMT level and your IBM i configuration.
+- **`disabled`**: Only the **first row** of a multi-row insert array is inserted; the rest are silently ignored. Provided for legacy compatibility only — avoid this unless you specifically need the old single-row behavior.
 
-If you specify `.returning(['COL1', 'COL2'])` with multi-row inserts, those columns are selected; otherwise `IDENTITY_VAL_LOCAL()` (single-row) or `*` (multi-row) is used as a lenient fallback.
+If you call `.returning(['COL1', 'COL2'])`, those columns are selected explicitly; otherwise `IDENTITY_VAL_LOCAL()` (single-row) or `*` (multi-row, `auto` strategy) is used as a fallback.
 
 ## Returning Behavior (INSERT / UPDATE / DELETE)
 
-Native `RETURNING` is not broadly supported over ODBC on IBM i. The dialect provides pragmatic emulation:
+IBM i DB2 does not support native `RETURNING` over ODBC. `knex-ibmi` emulates it, with these caveats:
 
 ### INSERT
 
-- `auto` multi-row: generates a single multi-values INSERT. When no explicit column list is requested it returns all inserted rows (`*`) as a lenient fallback. Some installations may see this internally wrapped using a `SELECT * FROM FINAL TABLE( INSERT ... )` pattern in logs or debug output; that wrapper is only an implementation detail to surface inserted rows.
-- `sequential`: inserts each row one at a time so it can reliably call `IDENTITY_VAL_LOCAL()` after each insert; builds an array of returned rows.
-- `disabled`: legacy single-row insert behavior; additional rows in the values array are ignored.
+See [Multi-Row Insert Strategies](#multi-row-insert-strategies) above — behavior differs by strategy and by whether `.returning(...)` is used.
 
 ### UPDATE
 
-- Executes the UPDATE.
-- Re-selects the affected rows using the original WHERE clause when `.returning(...)` is requested.
+`.returning(...)` on an `UPDATE` runs as **two separate statements**: the `UPDATE`, followed by a `SELECT` using the _same_ `WHERE` clause to fetch the resulting rows.
+
+⚠️ **Race condition**: between the `UPDATE` and the follow-up `SELECT`, another connection could insert, update, or delete rows matching that `WHERE` clause. The rows returned may not exactly reflect what your `UPDATE` changed. For strict consistency:
+
+- Use a serializable (or otherwise sufficiently isolated) transaction around the update, or
+- Implement optimistic locking (e.g., a version/timestamp column checked in the `WHERE` clause), or
+- Skip `.returning()` on `UPDATE` and fetch the data you need in a separate, deliberate query.
 
 ### DELETE
 
-- Selects the rows to be deleted (capturing requested returning columns or `*`).
-- Executes the DELETE.
-- Returns the previously selected rows.
+`.returning(...)` on a `DELETE` runs as **two separate statements**: a `SELECT` (using the requested columns or `*`) to capture the rows first, followed by the `DELETE`.
 
-### Notes
+⚠️ Because this emulation is not atomic — it's a `SELECT` followed by a `DELETE`, not a single statement — concurrent writers can change the matching rows between statements. Use suitable transaction isolation and journaled tables when you need stronger consistency, and use an explicit predicate or locking strategy appropriate to your workload.
 
-- `returning('*')` can be expensive on large result sets—limit the column list when possible.
-- For guaranteed, ordered identity values across many inserted rows use the `sequential` strategy.
+### General guidance
 
-## Configuration Summary
+- `.returning('*')` can be expensive on large result sets; request only the columns you need.
+- See [Multi-Row Insert Strategies](#multi-row-insert-strategies) when you need reliable, ordered identity values across many inserted rows.
+
+## Configuration Reference
+
+Attach these options under the root knex config as `ibmi`:
 
 ```ts
 interface IbmiDialectConfig {
-  multiRowInsert?: "auto" | "sequential" | "disabled";
-  sequentialInsertTransactional?: boolean; // if true, wraps sequential loop in BEGIN/COMMIT
-  preparedStatementCache?: boolean; // Enable per-connection statement caching (default: false)
-  preparedStatementCacheSize?: number; // Max cached statements per connection (default: 100)
-  readUncommitted?: boolean; // Append WITH UR to SELECT queries (default: false)
+  multiRowInsert?: "auto" | "sequential" | "disabled"; // default: "auto"
+  sequentialInsertTransactional?: boolean; // default: false — wrap sequential inserts in a driver transaction
+  preparedStatementCache?: boolean; // default: false — enable per-connection prepared statement caching
+  preparedStatementCacheSize?: number; // default: 100 — max cached statements per connection
+  readUncommitted?: boolean; // default: false — append WITH UR to compiled SELECT queries
+  normalizeBigintToString?: boolean; // default: true — stringify BigInt values in results
 }
 ```
 
-Attach under the root knex config as `ibmi`.
-
-### Performance Tuning
-
-#### Prepared Statement Caching (v0.5.0+)
-
-Enable optional prepared statement caching to reduce parse overhead for repeated queries:
-
 ```ts
 const db = knex({
   client: DB2Dialect,
@@ -437,37 +354,41 @@ const db = knex({
     /* ... */
   },
   ibmi: {
-    preparedStatementCache: true, // Enable caching
-    preparedStatementCacheSize: 100, // Max statements per connection
+    multiRowInsert: "auto",
+    preparedStatementCache: true,
+    preparedStatementCacheSize: 100,
+    readUncommitted: false,
+    normalizeBigintToString: true,
   },
 });
 ```
 
-When enabled, the dialect maintains a per-connection LRU cache of prepared statements. Statements are automatically closed when evicted or when the connection is destroyed.
+### `normalizeBigintToString`
 
-#### Read Uncommitted Isolation (v0.5.0+)
+The `odbc` driver can return `BigInt` values for large integer columns. `JSON.stringify()` throws on `BigInt`, which breaks common patterns like returning query results directly from an HTTP handler. `normalizeBigintToString` is **`true` by default** and recursively converts any `BigInt` found in query results (and cursor/stream rows) to a `string`. Set it to `false` only if your application handles `BigInt` values itself and you want to preserve the native type.
 
-For read-heavy workloads, enable uncommitted read isolation to improve concurrency:
+### Prepared statement caching
+
+Enable `preparedStatementCache` to reduce prepare overhead for repeated statements that use the prepared-statement execution path, such as `INSERT`, `UPDATE`, and `DELETE`. Ordinary `SELECT` queries use the driver's direct query path and are not cached.
 
 ```ts
-const db = knex({
-  client: DB2Dialect,
-  connection: {
-    /* ... */
-  },
-  ibmi: {
-    readUncommitted: true, // Appends WITH UR to all SELECT queries
-  },
-});
+ibmi: {
+  preparedStatementCache: true,
+  preparedStatementCacheSize: 100, // per connection
+}
 ```
 
-This appends `WITH UR` to all SELECT queries, allowing reads without waiting for locks. Only use this if your application can tolerate reading uncommitted data.
+When enabled, the dialect keeps a per-connection LRU cache of prepared ODBC statements, keyed by SQL text. Statements are closed automatically when evicted from the cache or when their connection is destroyed.
 
-### Transactional Sequential Inserts
+### Read uncommitted isolation
 
-When `ibmi.sequentialInsertTransactional` is `true`, the dialect uses node-odbc's `beginTransaction()`, `commit()`, and `rollback()` APIs around the per-row loop. If the transaction cannot begin, the insert aborts before executing any rows. A row or commit failure triggers a rollback attempt and then rethrows the original failure.
+```ts
+ibmi: {
+  readUncommitted: true,
+}
+```
 
-<!-- Benchmarks section intentionally removed. Benchmarking is handled in the external test harness project -->
+This appends `WITH UR` to **compiled `SELECT` queries** produced by the query compiler (i.e., ordinary `.select()`/`.first()`/`.pluck()` calls). It does not apply to `INSERT`/`UPDATE`/`DELETE` statements, nor to the internal `SELECT` statements used to emulate `.returning()` on `UPDATE`/`DELETE`. `WITH UR` allows reads to proceed without waiting on locks, at the cost of **dirty reads** — you may see uncommitted data from other in-flight transactions. Only enable this if your application can tolerate that.
 
 ## Links
 
@@ -475,3 +396,4 @@ When `ibmi.sequentialInsertTransactional` is `true`, the dialect uses node-odbc'
 - Knex repo: https://github.com/knex/knex
 - ODBC driver: https://github.com/IBM/node-odbc
 - IBM i OSS docs: https://ibmi-oss-docs.readthedocs.io/
+- Migration system details: [MIGRATIONS.md](./MIGRATIONS.md)
