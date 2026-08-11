@@ -97,10 +97,19 @@ Use the connection configuration shown in [Quick Start](#quick-start), then call
 
 ## Identifiers
 
-IBM i DB2 is case-insensitive by default when identifiers are unquoted (unquoted names are folded to uppercase internally). To preserve this behavior, `knex-ibmi` does **not** wrap table/column identifiers in quotes the way most Knex dialects do. This means:
+IBM i DB2 is case-insensitive by default when identifiers are unquoted (unquoted names are folded to uppercase internally). To preserve this behavior, `knex-ibmi` does **not** automatically wrap table or column identifiers in quotes the way most Knex dialects do.
 
-- You can write `.where({ status: "A" })` or `.where({ STATUS: "A" })` interchangeably against the same column.
-- Identifiers are not case-sensitive unless you deliberately created case-sensitive (quoted) object names on IBM i, which this dialect does not support.
+- For ordinary unquoted identifiers, you can write `.where({ status: "A" })` or `.where({ STATUS: "A" })` interchangeably against the same column.
+- Mixed-case and other case-sensitive identifiers are supported. Include SQL double quotes in the identifier passed to Knex; for object keys, put the quoted identifier in the key:
+
+  ```ts
+  const rows = await db('"MyTable"')
+    .select('"recordId"', '"displayName"')
+    .where({ '"recordId"': 42 });
+  ```
+
+  This generates identifiers such as `"MyTable"` and `"recordId"`, preserving their case on IBM i DB2.
+
 - The built-in migration runner defaults to `KNEX_MIGRATIONS`. The dialect also normalizes the standard `KNEX_MIGRATIONS` / `knex_migrations` names to uppercase; arbitrary custom table names are preserved.
 
 ## Streaming
