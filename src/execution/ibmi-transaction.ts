@@ -4,9 +4,9 @@ class IBMiTransaction extends Transaction {
   // Use type assertion to work around ESM import interface issues
   [key: string]: any;
 
-  begin(connection: any): any {
+  async begin(connection: any): Promise<any> {
     try {
-      return connection.beginTransaction();
+      return await connection.beginTransaction();
     } catch (error: any) {
       if (this.isConnectionClosed(error)) {
         console.warn(
@@ -20,33 +20,54 @@ class IBMiTransaction extends Transaction {
     }
   }
 
-  rollback(connection: any): any {
+  async rollback(connection: any, error: any): Promise<any> {
+    this._completed = true;
     try {
-      return connection.rollback();
-    } catch (error: any) {
-      // Treat rollback on a closed connection as success to avoid hangs
+      await connection.rollback();
+    } catch (rollbackError: any) {
+      if (!this.isConnectionClosed(rollbackError)) {
+        this._rejecter(rollbackError);
+        return;
+      }
       console.warn(
-        "IBM i DB2: Rollback encountered an error (likely closed connection):",
-        error?.message || error,
+        "IBM i DB2: Rollback encountered a closed connection:",
+        rollbackError?.message || rollbackError,
       );
-      return Promise.resolve();
     }
+
+    if (error === undefined && this.doNotRejectOnRollback) {
+      this._resolver();
+      return;
+    }
+
+    this._rejecter(
+      error === undefined
+        ? new Error("Transaction rejected with non-error: undefined")
+        : error,
+    );
   }
 
-  commit(connection: any): any {
+  async commit(connection: any, value: any): Promise<any> {
+    this._completed = true;
     try {
-      return connection.commit();
+      const result = await connection.commit();
+      this._resolver(value);
+      return result;
     } catch (error: any) {
-      if (this.isConnectionClosed(error)) {
+      const wrappedError = this.isConnectionClosed(error)
+        ? new Error(
+            "Connection closed during commit - this is expected with DDL operations on IBM i DB2",
+          )
+        : error;
+
+      if (wrappedError !== error) {
         console.warn(
           "IBM i DB2: Connection closed during commit - DDL operations cause implicit commits",
         );
-        // Re-throw so Knex can surface the expected failure semantics
-        throw new Error(
-          "Connection closed during commit - this is expected with DDL operations on IBM i DB2",
-        );
       }
-      throw error;
+
+      this._rejecter(wrappedError);
+      return;
     }
   }
 

@@ -11,16 +11,18 @@ export default defineConfig([
     clean: true,
     external: ["knex", "odbc"],
     outExtension: ({ format }) => ({
-      js: format === "esm" ? ".mjs" : ".js",
+      js: format === "esm" ? ".mjs" : ".cjs",
     }),
-    esbuildOptions: (options) => {
-      // Fix module resolution for Knex internal imports in ESM
-      options.banner = {
-        js: `
+    esbuildOptions: (options, context) => {
+      // Fix module resolution for Knex internal imports in ESM only.
+      if (context.format === "esm") {
+        options.banner = {
+          js: `
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-        `.trim(),
-      };
+          `.trim(),
+        };
+      }
     },
   },
   // CLI build

@@ -61,26 +61,42 @@ class StatementCache {
       if (firstKey !== undefined) {
         const oldStmt = this.cache.get(firstKey);
         this.cache.delete(firstKey);
-        // Close the evicted statement
-        if (oldStmt && typeof oldStmt.close === "function") {
-          oldStmt.close().catch(() => {});
-        }
+        this.closeStatement(oldStmt);
       }
     }
     this.cache.set(sql, stmt);
   }
 
+  /** Remove a cached statement without closing it (caller owns close). */
+  delete(sql: string): any | undefined {
+    const stmt = this.cache.get(sql);
+    if (stmt !== undefined) {
+      this.cache.delete(sql);
+    }
+    return stmt;
+  }
+
+  private pendingCloses = new Set<Promise<void>>();
+
+  private closeStatement(stmt: any): void {
+    if (!stmt || typeof stmt.close !== "function") {
+      return;
+    }
+
+    const closePromise = Promise.resolve(stmt.close()).catch(() => {});
+    void closePromise.then(() => {
+      this.pendingCloses.delete(closePromise);
+    });
+    this.pendingCloses.add(closePromise);
+  }
+
   async clear(): Promise<void> {
     const statements = Array.from(this.cache.values());
     this.cache.clear();
-    // Close all cached statements
-    await Promise.all(
-      statements.map((stmt) =>
-        stmt && typeof stmt.close === "function"
-          ? stmt.close().catch(() => {})
-          : Promise.resolve(),
-      ),
-    );
+    for (const statement of statements) {
+      this.closeStatement(statement);
+    }
+    await Promise.all(Array.from(this.pendingCloses));
   }
 
   size(): number {
@@ -460,7 +476,13 @@ class DB2Client extends knex.Client {
     obj: any,
   ): Promise<any> {
     const meta = obj._ibmiSequentialInsert;
-    const { rows, columns, tableName, returning } = meta;
+    const {
+      rows,
+      columns,
+      tableName,
+      returning,
+      useNullAsDefault = false,
+    } = meta;
     this.printDebug("Executing sequential multi-row insert");
     const insertedRows: any[] = [];
 
@@ -468,52 +490,58 @@ class DB2Client extends knex.Client {
       (this.config as any)?.ibmi?.sequentialInsertTransactional === true;
     let beganTx = false;
     if (transactional) {
-      try {
-        await connection.query("BEGIN");
-        beganTx = true;
-      } catch (_e) {
-        this.printWarn(
-          "Could not begin transaction for sequential insert; proceeding without",
-        );
+      // Use node-odbc transaction API; fail if begin fails (do not proceed silently)
+      await connection.beginTransaction();
+      beganTx = true;
+    }
+
+    try {
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const colList = columns.join(", ");
+        const builder = this.queryBuilder();
+        const bindingsHolder = { bindings: [] as any[] };
+        const valueExpressions = columns.map((column: string) => {
+          const value =
+            row[column] === undefined
+              ? useNullAsDefault
+                ? null
+                : this.raw("DEFAULT")
+              : row[column];
+          return (this as any).parameter(value, builder, bindingsHolder);
+        });
+        const singleValues = bindingsHolder.bindings;
+        const baseInsert = `insert into ${tableName} (${colList}) values (${valueExpressions.join(", ")})`;
+        const selectCols = returning
+          ? this.queryCompiler({} as any).formatter.columnize(returning)
+          : "IDENTITY_VAL_LOCAL()";
+        const wrapped = `select ${selectCols} from FINAL TABLE(${baseInsert})`;
+        const singleObj = {
+          sql: wrapped,
+          bindings: singleValues,
+          sqlMethod: "insert",
+          response: undefined,
+        };
+        await this.executeStatementQuery(connection, singleObj);
+        const resp = (singleObj as any).response?.rows;
+        if (resp) insertedRows.push(...resp);
       }
-    }
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const colList = columns.join(", ");
-      const placeholders = columns.map(() => "?").join(", ");
-      const singleValues = columns.map((c: string) => row[c]);
-      const baseInsert = `insert into ${tableName} (${colList}) values (${placeholders})`;
-      const selectCols = returning
-        ? this.queryCompiler({} as any).formatter.columnize(returning)
-        : "IDENTITY_VAL_LOCAL()";
-      const wrapped = `select ${selectCols} from FINAL TABLE(${baseInsert})`;
-      const singleObj = {
-        sql: wrapped,
-        bindings: singleValues,
-        sqlMethod: "insert",
-        response: undefined,
-      };
-      await this.executeStatementQuery(connection, singleObj);
-      const resp = (singleObj as any).response?.rows;
-      if (resp) insertedRows.push(...resp);
-    }
-
-    if (transactional && beganTx) {
-      try {
-        await connection.query("COMMIT");
-      } catch (commitErr) {
-        this.printError(
-          "Commit failed for sequential insert, attempting rollback: " +
-            (commitErr as any)?.message,
-        );
+      if (beganTx) {
+        await connection.commit();
+      }
+    } catch (err) {
+      if (beganTx) {
         try {
-          await connection.query("ROLLBACK");
-        } catch {
-          /* ignore */
+          await connection.rollback();
+        } catch (rollbackErr) {
+          this.printError(
+            "Rollback failed for sequential insert: " +
+              (rollbackErr as any)?.message,
+          );
         }
-        throw commitErr;
       }
+      throw err;
     }
 
     obj.response = { rows: insertedRows, rowCount: insertedRows.length };
@@ -527,7 +555,24 @@ class DB2Client extends knex.Client {
     obj: any,
   ): Promise<any> {
     const meta = obj._ibmiDeleteReturning;
-    const { deleteSql, selectColumns, whereClause, tableName } = meta;
+    const {
+      deleteSql,
+      selectColumns,
+      whereClause,
+      tableName,
+      deleteBindingCount,
+      whereBindingCount,
+    } = meta;
+    const bindings = obj.bindings || [];
+    const effectiveDeleteBindingCount =
+      typeof deleteBindingCount === "number"
+        ? deleteBindingCount
+        : bindings.length -
+          (typeof whereBindingCount === "number"
+            ? whereBindingCount
+            : (whereClause?.match(/\?/g) || []).length);
+    const deleteBindings = bindings.slice(0, effectiveDeleteBindingCount);
+    const selectBindings = bindings.slice(effectiveDeleteBindingCount);
     this.printDebug("Executing DELETE with returning emulation");
     try {
       // SELECT rows first
@@ -536,7 +581,7 @@ class DB2Client extends knex.Client {
         : `select ${selectColumns} from ${tableName}`;
       const selectObj = {
         sql: selectSql,
-        bindings: obj.bindings,
+        bindings: selectBindings,
         sqlMethod: "select",
         response: undefined,
       };
@@ -545,7 +590,7 @@ class DB2Client extends knex.Client {
       // Execute DELETE
       const deleteObj = {
         sql: deleteSql,
-        bindings: obj.bindings,
+        bindings: deleteBindings,
         sqlMethod: "del",
         response: undefined,
       };
@@ -598,14 +643,16 @@ class DB2Client extends knex.Client {
     obj: any,
   ): Promise<void> {
     let statement: any;
-    let usedCache = false;
+    // True when the statement is retained by the per-connection cache and must not be closed.
+    let retainedInCache = false;
+    let cache: StatementCache | undefined;
     const cacheEnabled =
       (this.config as any)?.ibmi?.preparedStatementCache === true;
 
     try {
       // Try to use cached statement if enabled
       if (cacheEnabled) {
-        let cache = this.statementCaches.get(connection);
+        cache = this.statementCaches.get(connection);
         if (!cache) {
           const cacheSize =
             (this.config as any)?.ibmi?.preparedStatementCacheSize || 100;
@@ -615,15 +662,16 @@ class DB2Client extends knex.Client {
 
         statement = cache.get(obj.sql);
         if (statement) {
-          usedCache = true;
+          retainedInCache = true;
           this.printDebug(
             `Using cached statement for: ${obj.sql.substring(0, 50)}...`,
           );
         } else {
-          // Create and cache new statement
+          // Create, prepare, then cache only after successful prepare
           statement = await connection.createStatement();
           await statement.prepare(obj.sql);
           cache.set(obj.sql, statement);
+          retainedInCache = true;
           this.printDebug(`Cached new statement (cache size: ${cache.size()})`);
         }
       } else {
@@ -673,11 +721,21 @@ class DB2Client extends knex.Client {
         return;
       }
 
+      // Drop broken cached entries so they are not reused; finally will close them.
+      if (retainedInCache && cache && obj.sql) {
+        cache.delete(obj.sql);
+        retainedInCache = false;
+      }
+
       this.printError(this.safeStringify(err));
       throw err;
     } finally {
-      // Only close statement if it's not cached
-      if (!usedCache && statement && typeof statement.close === "function") {
+      // Only close statement if it is not retained by the cache
+      if (
+        !retainedInCache &&
+        statement &&
+        typeof statement.close === "function"
+      ) {
         try {
           await statement.close();
         } catch (closeErr) {

@@ -1,15 +1,15 @@
 {
   "name": "@bdkinc/knex-ibmi",
-  "version": "0.5.12",
+  "version": "0.6.0",
   "description": "Knex dialect for IBMi",
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -19,7 +19,7 @@
     "ibmi-migrations": "dist/cli.cjs"
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=20"
   },
   "scripts": {
     "build": "tsup && node scripts/fix-cli.mjs",
@@ -68,7 +68,7 @@
     "typescript-eslint": "^8.50.0"
   },
   "dependencies": {
-    "knex": "^3",
-    "odbc": "^2.4.9"
+    "knex": "^3.3.0",
+    "odbc": "^2.5.0"
   }
 }

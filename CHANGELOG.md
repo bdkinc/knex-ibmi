@@ -1,3 +1,26 @@
+## 0.6.0 - August 11th, 2026
+
+### ⚠️ Breaking Changes
+
+- Raised the minimum Node.js version from 16 to 20 to align with `odbc@2.5.0`.
+- Updated runtime dependencies to `odbc@^2.5.0` and `knex@^3.3.0`.
+
+### 🛠 Fixes
+
+- Fixed Knex transaction commit and rollback settlement when using node-odbc transaction APIs.
+- Fixed sequential transactional inserts to fail closed on begin errors and roll back row or commit failures.
+- Fixed sequential insert value compilation for raw expressions, missing values, `useNullAsDefault`, and heterogeneous row shapes.
+- Fixed prepared-statement cache lifecycle, failed-entry eviction, and connection teardown races.
+- Fixed multi-row insert preparation to preserve explicit `null`, include columns introduced by later rows, and avoid mutating migration timestamps.
+- Fixed DELETE `.returning()` binding ownership, including statements with CTE bindings.
+- Fixed the CommonJS package entry so `require("@bdkinc/knex-ibmi")` exposes the dialect exports.
+
+### 🧪 Testing
+
+- Added focused regression coverage for transactions, sequential inserts, prepared-statement caching, and insert preparation.
+
+---
+
 ## 0.5.10 - February 13th, 2026
 
 ### 🛠 Fixes

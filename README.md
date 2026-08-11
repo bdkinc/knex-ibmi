@@ -19,7 +19,8 @@ For IBM i OSS docs, see https://ibmi-oss-docs.readthedocs.io/. ODBC guidance: ht
 
 ## Requirements
 
-- Node.js >= 16
+- Node.js >= 20
+- [`odbc`](https://github.com/IBM/node-odbc) >= 2.5
 - ODBC driver (IBM i Access ODBC Driver)
 
 ## Installation
@@ -464,7 +465,7 @@ This appends `WITH UR` to all SELECT queries, allowing reads without waiting for
 
 ### Transactional Sequential Inserts
 
-When `ibmi.sequentialInsertTransactional` is `true`, the dialect will attempt `BEGIN` before the per-row loop and `COMMIT` after. On commit failure it will attempt a `ROLLBACK`. If `BEGIN` is not supported, it logs a warning and continues non-transactionally.
+When `ibmi.sequentialInsertTransactional` is `true`, the dialect uses node-odbc's `beginTransaction()`, `commit()`, and `rollback()` APIs around the per-row loop. If the transaction cannot begin, the insert aborts before executing any rows. A row or commit failure triggers a rollback attempt and then rethrows the original failure.
 
 <!-- Benchmarks section intentionally removed. Benchmarking is handled in the external test harness project -->
 

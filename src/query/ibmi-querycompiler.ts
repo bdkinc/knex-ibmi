@@ -5,9 +5,6 @@ class IBMiQueryCompiler extends QueryCompiler {
   // Use type assertion to work around ESM import interface issues
   [key: string]: any;
 
-  // Cache for column metadata to improve performance with repeated operations
-  private columnCache = new Map<string, string[]>();
-
   // Override select method to add IBM i optimization hints
   select() {
     let sql = super.select.call(this);
@@ -97,9 +94,8 @@ class IBMiQueryCompiler extends QueryCompiler {
 
     // Add metadata for sequential strategy so runtime can execute remaining rows
     if (multiRowStrategy === "sequential" && isArrayInsert) {
-      // Build column list using first row keys (sorted to match _prepInsert logic)
-      const first = originalValues[0];
-      const columns = Object.keys(first).sort();
+      // Union columns across all rows (same semantics as _prepInsert)
+      const columns = this._unionInsertColumns(originalValues);
       return {
         sql,
         returning: undefined,
@@ -109,6 +105,7 @@ class IBMiQueryCompiler extends QueryCompiler {
           tableName: this.tableName,
           returning: returning || null,
           identityOnly: !returning,
+          useNullAsDefault: this.client?.config?.useNullAsDefault === true,
         },
       };
     }
@@ -185,33 +182,47 @@ class IBMiQueryCompiler extends QueryCompiler {
     return "";
   }
 
-  private generateCacheKey(data: any): string {
-    // Include table name to prevent cache collisions between tables with same columns
-    const tablePrefix = this.tableName ? `${this.tableName}:` : "";
-    if (Array.isArray(data) && data.length > 0) {
-      // Use the keys of the first object as cache key
-      return (
-        tablePrefix +
-        Object.keys(data[0] || {})
-          .sort()
-          .join("|")
-      );
+  /**
+   * Union of object keys across insert rows, sorted for stable SQL column order.
+   * Matches Knex multi-row insert column discovery.
+   */
+  private _unionInsertColumns(dataArray: any[]): string[] {
+    let columns: string[] = [];
+    for (let i = 0; i < dataArray.length; i++) {
+      const item = dataArray[i];
+      if (item == null) break;
+      if (typeof item !== "object") continue;
+      if (i === 0) {
+        columns = Object.keys(item).sort();
+        continue;
+      }
+      for (const key of Object.keys(item)) {
+        if (columns.indexOf(key) === -1) {
+          columns = columns.concat(key).sort();
+        }
+      }
     }
-    if (data && typeof data === "object") {
-      return tablePrefix + Object.keys(data).sort().join("|");
+    return columns;
+  }
+
+  /**
+   * Format migration_time without mutating the caller's insert object.
+   */
+  private _withFormattedMigrationTime(item: any): any {
+    if (!item || typeof item !== "object" || !item.migration_time) {
+      return item;
     }
-    return "";
+    const parsed = new Date(item.migration_time);
+    if (isNaN(parsed.getTime())) {
+      return item;
+    }
+    return {
+      ...item,
+      migration_time: this.formatTimestampLocal(parsed),
+    };
   }
 
   _prepInsert(data: any): { columns: any; values: any } {
-    // Handle timestamps in knex migrations
-    if (typeof data === "object" && data?.migration_time) {
-      const parsed = new Date(data.migration_time);
-      if (!isNaN(parsed.getTime())) {
-        data.migration_time = this.formatTimestampLocal(parsed);
-      }
-    }
-
     const isRaw = rawOrFn_(
       data,
       undefined,
@@ -224,33 +235,45 @@ class IBMiQueryCompiler extends QueryCompiler {
       return isRaw;
     }
 
-    // Normalize data to array format
-    const dataArray = Array.isArray(data) ? data : data ? [data] : [];
+    // Normalize to array without mutating caller input (including migration_time)
+    const rawArray = Array.isArray(data) ? data : data ? [data] : [];
+    const dataArray = rawArray.map((item) =>
+      this._withFormattedMigrationTime(item),
+    );
 
     if (dataArray.length === 0) {
       return { columns: [], values: [] };
     }
 
-    // Multi-row support: build unified column list from first row, then map all rows
-    const firstItem = dataArray[0];
-    if (!firstItem || typeof firstItem !== "object") {
-      return { columns: [], values: [] };
-    }
-
-    const cacheKey = this.generateCacheKey(firstItem);
-    let columns: string[];
-    if (cacheKey && this.columnCache.has(cacheKey)) {
-      columns = this.columnCache.get(cacheKey)!;
-    } else {
-      columns = Object.keys(firstItem).sort();
-      if (cacheKey && columns.length > 0)
-        this.columnCache.set(cacheKey, columns);
-    }
-
+    // Knex multi-row semantics: union keys across rows; preserve explicit null;
+    // use undefined only for missing keys (so Knex can emit DEFAULT / omit).
+    let columns: string[] = [];
     const values: any[] = [];
-    for (const item of dataArray) {
-      if (!item || typeof item !== "object") continue;
-      values.push(columns.map((c) => item[c] ?? undefined));
+    for (let i = 0; i < dataArray.length; i++) {
+      if (dataArray[i] == null) break;
+      if (typeof dataArray[i] !== "object") continue;
+
+      if (i === 0) {
+        columns = Object.keys(dataArray[i]).sort();
+      }
+
+      const row = new Array(columns.length);
+      const keys = Object.keys(dataArray[i]);
+      for (let j = 0; j < keys.length; j++) {
+        const key = keys[j];
+        let idx = columns.indexOf(key);
+        if (idx === -1) {
+          columns = columns.concat(key).sort();
+          idx = columns.indexOf(key);
+          for (let k = 0; k < values.length; k++) {
+            values[k].splice(idx, 0, undefined);
+          }
+          row.splice(idx, 0, undefined);
+        }
+        // Preserve explicit null; do not coerce with ??
+        row[idx] = dataArray[i][key];
+      }
+      values.push(row);
     }
 
     return { columns, values };
@@ -317,7 +340,11 @@ class IBMiQueryCompiler extends QueryCompiler {
       typeof baseDelete === "object" && (baseDelete as any).sql
         ? (baseDelete as any).sql
         : baseDelete;
+    const deleteBindingCount = this.bindingsHolder.bindings.length;
     const selectColumns = this.formatter.columnize(returning);
+    const whereClause = this.where();
+    const whereBindingCount =
+      this.bindingsHolder.bindings.length - deleteBindingCount;
     // Return the base DELETE SQL (not FINAL TABLE wrapper)
     // The metadata tells the client to execute SELECT + DELETE separately
     // This ensures that .toString() and .toQuery() don't generate invalid FINAL TABLE syntax
@@ -327,8 +354,10 @@ class IBMiQueryCompiler extends QueryCompiler {
       _ibmiDeleteReturning: {
         deleteSql,
         selectColumns,
-        whereClause: this.where(),
+        whereClause,
         tableName: this.tableName,
+        deleteBindingCount,
+        whereBindingCount,
       },
     };
   }
